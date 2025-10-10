@@ -1,5 +1,22 @@
-import Executor from "./Executor";
-import { ArrayNode, ChainNode, ConcatNode, ConditionalNode, ExpressionNode, FuncNode, IteratorNode, LiteralNode, LogicalNode, NotNode, ObjectNode, OperatorNode, RegExpMatchNode, RegExpNode, TypeNode, VariableNode } from "./Types";
+import Executor from "./Executor.js";
+import { 
+    ArrayNode, 
+    ChainNode, 
+    ConcatNode, 
+    ConditionalNode, 
+    ExpressionNode, 
+    FuncNode, 
+    IteratorNode, 
+    LiteralNode, 
+    LogicalNode, 
+    NotNode, 
+    ObjectNode, 
+    OperatorNode, 
+    RegExpMatchNode, 
+    RegExpNode, 
+    TypeNode, 
+    VariableNode 
+} from "./Types.js";
 
 describe("Execute variable expression", () => {
     const exprNode: VariableNode = {

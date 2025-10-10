@@ -1,6 +1,6 @@
-import Executor from "./Executor";
-import Parser from "./Parser";
-import { ExecuteOptions, CompiledExpression } from "./Types";
+import Executor from "./Executor.js";
+import Parser from "./Parser.js";
+import { ExecuteOptions, CompiledExpression } from "./Types.js";
 
 export default function Expression(expressionStr: string) {
     const tree = Parser(expressionStr);

@@ -1,5 +1,17 @@
-import Parser from "./Parser";
-import { ChainNode, ConcatNode, ConditionalNode, FuncNode, IteratorNode, LiteralNode, LogicalNode, NotNode, RegExpMatchNode, RegExpNode, VariableNode } from "./Types";
+import Parser from "./Parser.js";
+import { 
+    ChainNode, 
+    ConcatNode, 
+    ConditionalNode, 
+    FuncNode, 
+    IteratorNode,
+     LiteralNode, 
+     LogicalNode, 
+     NotNode, 
+     RegExpMatchNode, 
+     RegExpNode, 
+     VariableNode 
+} from "./Types.js";
 
 describe("Parse variable expression", () => {
     const exprStr = "$.labs[\"8a074a7d-6768-47bc-9573-297752ae0bbc\"].components[\"31742ad4-d3c0-4ec2-8fb4-cbcabaf0bca0\"].input.value";

@@ -1,6 +1,24 @@
-import { ArrayNode, ChainNode, ConcatNode, ConditionalNode, ExecuteOptions, ExpressionNode, FuncNode, IteratorLookup, IteratorNode, LiteralNode, LogicalNode, NotNode, ObjectNode, OperatorNode, RegExpMatchNode, RegExpNode, TypeNode, VariableNode } from "./Types";
-import { getType, isNil, isObject, isRegExp } from "../utils/RuntimeTypeCheck";
-import JPath from "../utils/JPath";
+import { 
+    ArrayNode, 
+    ChainNode, 
+    ConcatNode, 
+    ConditionalNode, 
+    ExecuteOptions, 
+    ExpressionNode, 
+    FuncNode, 
+    IteratorLookup, 
+    IteratorNode, 
+    LiteralNode, 
+    LogicalNode, 
+    NotNode, 
+    ObjectNode, 
+    OperatorNode, 
+    RegExpMatchNode, 
+    RegExpNode, 
+    TypeNode, 
+    VariableNode 
+} from "./Types.js";
+import { getType } from "@punyts/core";
 
 const ERROR_INVALID_EXPRESSION_TYPE = "[Invalid Expression Type] The expression type given is not valid.";
 const ERROR_INVALID_FUNCTION = "[Invalid Function] The execution expression's function value must be a function.";
@@ -210,11 +228,11 @@ function handleConditional(treeNode: ConditionalNode, context: Object, options: 
             return getType(sideA) !== sideB;
         case "isin":
             //if sideB is an object then see if the sideA value is in it
-            if (isObject(sideB)) {
+            if (sideB !== null && typeof sideB === "object") {
                 return sideA in sideB;
             }
             //if the sideB is regex then return if sideA matches the pattern
-            else if (isRegExp(sideB)) {
+            else if (getType(sideB) === "regexp") {
                 return !!sideA.match(sideB);
             }
             //otherwise return if sideA has an index in sideB
@@ -222,11 +240,11 @@ function handleConditional(treeNode: ConditionalNode, context: Object, options: 
                 return sideB.indexOf(sideA) !== -1
             }
         case "!isin":
-            if (isObject(sideB)) {
+            if (sideB !== null && typeof sideB === "object") {
                 return !(sideA in sideB);
             }
             //if the sideB is regex then return if sideA matches the pattern
-            else if (isRegExp(sideB)) {
+            else if (getType(sideB) === "regexp") {
                 return !sideA.match(sideB);
             }
             else {
@@ -281,11 +299,11 @@ function handleIterator(treeNode: IteratorNode, context: Object, options: Execut
                 const k1Val = sort === treeNode.lookup.key && k1
                     || sort === treeNode.lookup.index && keys.indexOf(k1)
                     || sort === treeNode.lookup.value && coll[k1]
-                    || JPath.lookup(sort, coll[k1]);
+                    || lookupPath(sort, coll[k1]);
                 const k2Val = sort === treeNode.lookup.key && k2
                     || sort === treeNode.lookup.index && keys.indexOf(k2)
                     || sort === treeNode.lookup.value && coll[k2]
-                    || JPath.lookup(sort, coll[k2]);
+                    || lookupPath(sort, coll[k2]);
                 if (k1Val < k2Val) {
                     return dir === "asc"
                         && -1
@@ -364,6 +382,19 @@ function handleIterator(treeNode: IteratorNode, context: Object, options: Execut
     });
 }
 
+function lookupPath(path: string, context: Object) {
+   const segs = path.split(".");
+   let obj: any = context;
+    for (let i = 0, len = segs.length; i < len; i++) {
+        if (obj == null) {
+            return undefined;
+        }
+        obj = obj[segs[i]];
+        --len;
+    }
+    return obj;
+}
+
 function handleMatch(treeNode: RegExpMatchNode, context: Object, options: ExecuteOptions) {
     const value = handleType(
         treeNode.value
@@ -407,7 +438,7 @@ function filterCollection(coll: Record<string | symbol | number, any>, filter: E
                 , options
             );
 
-            if (!isNil(result)) {
+            if (result != null) {
                 const value = coll[key];
                 if (isAr)
                     filtered.push(value);
@@ -421,9 +452,9 @@ function filterCollection(coll: Record<string | symbol | number, any>, filter: E
 }
 
 function handleVariable(treeNode: VariableNode, context: Object, options: ExecuteOptions) {
-    const ref = JPath.reference(treeNode.path, context);
+    const value = lookupPath(treeNode.path, context);
     
-    if (!ref.found) {
+    if (value === undefined) {
         //if this is a quiet fail then return undefined
         if (options.quiet === true) {
             return undefined;
@@ -432,11 +463,11 @@ function handleVariable(treeNode: VariableNode, context: Object, options: Execut
             `${ERROR_VARIABLE_NOT_FOUND} ("${treeNode.path}")`
         );
     }
-    return ref.value;
+    return value;
 }
 
 function handleExecution(treeNode: FuncNode, context: Object, options: ExecuteOptions) {
-    const fn: Function = JPath.lookup(treeNode.path, context);
+    const fn: Function = lookupPath(treeNode.path, context);
 
     const args = treeNode.arguments
         .map(function mapArg(arg) {
@@ -461,7 +492,7 @@ function handleExecution(treeNode: FuncNode, context: Object, options: ExecuteOp
 }
 
 function handleBind(treeNode: FuncNode, context: Object, options: ExecuteOptions) {
-    const fn = JPath.lookup(treeNode.path, context);
+    const fn = lookupPath(treeNode.path, context);
     const args = treeNode.arguments
             .map(
                 function mapArg(arg) {

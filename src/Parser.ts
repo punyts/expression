@@ -1,5 +1,23 @@
-import { getGenericType, isNumeric } from "../utils/RuntimeTypeCheck";
-import { ExpressionTree, TypeNode, ExpressionNode, ChainNode, ConditionalNode, IteratorNode, SortDirection, LiteralNode, VariableNode, FuncNode, ArrayNode, ObjectNode, RegExpMatchNode, RegExpNode, NotNode, ConcatNode, OperatorNode, LogicalNode } from "./Types";
+import { 
+    ExpressionTree, 
+    TypeNode, 
+    ExpressionNode, 
+    ChainNode, 
+    ConditionalNode, 
+    IteratorNode, 
+    SortDirection, 
+    LiteralNode, 
+    VariableNode, 
+    FuncNode, 
+    ArrayNode, 
+    ObjectNode, 
+    RegExpMatchNode, 
+    RegExpNode, 
+    NotNode, 
+    ConcatNode, 
+    OperatorNode, 
+    LogicalNode 
+} from "./Types.js";
 
 /**
 * A regular expression pattern to match literal expressions
@@ -145,11 +163,7 @@ export default function Parser(expressionStr: string) {
 }
 
 function removeStrings(strings: string[], ...values: string[]) {
-    const value = getGenericType(values[1]) !== "nil"
-        ? values[1]
-        : getGenericType(values[2]) !== "nil"
-            ? values[2]
-            : values[3];
+    const value = values[1] ?? values[2] ?? values[3];
     const index = strings.length;
     strings.push(
         value
@@ -331,10 +345,9 @@ function parseIterator(variables: string[], strings: string[], match: RegExpMatc
         );
     }
     if (!!match[9]) {
-        treeNode.step = isNumeric(match[9])
-            && parseInt(match[9])
-            || 1
-            ;
+        treeNode.step = /[0-9]+([.][0-9]+)?/.test(match[9])
+            ? parseInt(match[9])
+            : 1;
     }
 
     return treeNode;
