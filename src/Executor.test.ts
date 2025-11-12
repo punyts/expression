@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Executor from "./Executor.js";
 import { 
     ArrayNode, 
@@ -170,21 +171,18 @@ describe('Executor', () => {
         value: 42,
         nested: { key: 'value' },
         array: [1, 2, 3],
-        func: jest.fn((arg) => arg * 2),
+        func: vi.fn((arg: number) => arg * 2),
         badFn: "badFn"
     };
 
     const mockOptions = { quiet: true };
 
-    let jsonPathSpy: jest.SpyInstance;
-
     beforeEach(() => {
-        jest.clearAllMocks();
-        jsonPathSpy = jest.spyOn(require('jsonpath-plus'), 'JSONPath');
+        vi.clearAllMocks();
     });
 
     afterEach(() => {
-        jsonPathSpy.mockRestore();
+        vi.restoreAllMocks();
     });
 
     it('should handle literal nodes', () => {

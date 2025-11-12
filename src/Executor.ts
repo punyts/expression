@@ -226,30 +226,54 @@ function handleConditional(treeNode: ConditionalNode, context: Object, options: 
             return getType(sideA) === sideB;
         case "!is":
             return getType(sideA) !== sideB;
-        case "isin":
-            //if sideB is an object then see if the sideA value is in it
+        case "isin": {
+            const sideBType = getType(sideB);
+
+            if (sideBType === "regexp") {
+                if (typeof sideA !== "string") {
+                    return false;
+                }
+                return (sideB as RegExp).test(sideA);
+            }
+
+            if (Array.isArray(sideB)) {
+                return sideB.indexOf(sideA) !== -1;
+            }
+
             if (sideB !== null && typeof sideB === "object") {
                 return sideA in sideB;
             }
-            //if the sideB is regex then return if sideA matches the pattern
-            else if (getType(sideB) === "regexp") {
-                return !!sideA.match(sideB);
+
+            if (typeof sideB === "string") {
+                return sideB.indexOf(String(sideA)) !== -1;
             }
-            //otherwise return if sideA has an index in sideB
-            else {
-                return sideB.indexOf(sideA) !== -1
+
+            return false;
+        }
+        case "!isin": {
+            const sideBType = getType(sideB);
+
+            if (sideBType === "regexp") {
+                if (typeof sideA !== "string") {
+                    return true;
+                }
+                return !(sideB as RegExp).test(sideA);
             }
-        case "!isin":
+
+            if (Array.isArray(sideB)) {
+                return sideB.indexOf(sideA) === -1;
+            }
+
             if (sideB !== null && typeof sideB === "object") {
                 return !(sideA in sideB);
             }
-            //if the sideB is regex then return if sideA matches the pattern
-            else if (getType(sideB) === "regexp") {
-                return !sideA.match(sideB);
+
+            if (typeof sideB === "string") {
+                return sideB.indexOf(String(sideA)) === -1;
             }
-            else {
-                return sideB.indexOf(sideA) === -1
-            }
+
+            return true;
+        }
         default:
             throw new Error(
                 `${ERROR_INVALID_OPERATOR} (${op})`
@@ -383,15 +407,29 @@ function handleIterator(treeNode: IteratorNode, context: Object, options: Execut
 }
 
 function lookupPath(path: string, context: Object) {
-   const segs = path.split(".");
-   let obj: any = context;
-    for (let i = 0, len = segs.length; i < len; i++) {
+    if (typeof path !== "string") {
+        return undefined;
+    }
+
+    // Normalize dot and bracket notation into a consistent token list.
+    const normalizedPath = path
+        .trim()
+        .replace(/^\$\.?/, "")
+        .replace(/\[(\d+)\]/g, ".$1")
+        .replace(/\[['"]([^'"\]]+)['"]\]/g, ".$1");
+
+    const segments = normalizedPath
+        .split(".")
+        .filter((segment) => segment.length > 0);
+
+    let obj: any = context;
+    for (const segment of segments) {
         if (obj == null) {
             return undefined;
         }
-        obj = obj[segs[i]];
-        --len;
+        obj = obj[segment];
     }
+
     return obj;
 }
 
