@@ -171,7 +171,15 @@ function removeStrings(strings: string[], ...values: string[]) {
     return `"<${index}>"`;
 }
 
-function parse(variables: string[], strings: string[], strippedExpressionStr: string): ExpressionTree {
+function parse(
+        variables: string[],
+        strings: string[],
+        strippedExpressionStr: string
+): ExpressionTree {
+
+
+
+
     let node: ExpressionNode;
     //first step is to split any "||" or "&&"
     if (strippedExpressionStr.match(HAS_AND_OR_PATT)) {
@@ -346,14 +354,19 @@ function parseIterator(variables: string[], strings: string[], match: RegExpMatc
     }
     if (!!match[9]) {
         treeNode.step = /[0-9]+([.][0-9]+)?/.test(match[9])
-            ? parseInt(match[9])
-            : 1;
+            ? parseInt(
+        match[9]
+): 1;
     }
 
     return treeNode;
 }
 
 function parseValueExpression(variables: string[], strings: string[], expressionStr: string) {
+
+
+
+
     let match: RegExpMatchArray | null;
     //remove any leading or trailing whitespace
     expressionStr = expressionStr.trim();

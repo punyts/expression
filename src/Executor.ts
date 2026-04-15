@@ -39,7 +39,15 @@ export default function Executor(expressionTree: ExpressionNode, context: Object
     );
 }
 
-function handleType(treeNode: ExpressionNode, context: Object, options: ExecuteOptions): any {
+function handleType(
+        treeNode: ExpressionNode,
+        context: Object,
+        options: ExecuteOptions
+): any {
+
+
+
+
     switch (treeNode.type) {
         case "chain":
             return handleChain(
@@ -306,18 +314,21 @@ function handleIterator(treeNode: IteratorNode, context: Object, options: Execut
 
     const coll = !!filter
         ? filterCollection(
-            set
-            , filter
-            , treeNode.lookup
-            , context
-            , options
-        )
-        : set;
+        set,
+        filter,
+        treeNode.lookup,
+        context,
+        options
+): set;
     const keys = Object.keys(coll);
     let indx = 0;
 
     //sort if we have a sort
     if (!!sort) {
+
+
+
+
         keys.sort(
             function sortKeys(k1, k2) {
                 const k1Val = sort === treeNode.lookup.key && k1
@@ -639,7 +650,15 @@ function handleConcat(treeNode: ConcatNode, context: Object, options: ExecuteOpt
     return concatedValue;
 }
 
-function handleOperator(treeNode: OperatorNode, context: Object, options: ExecuteOptions): any {
+function handleOperator(
+        treeNode: OperatorNode,
+        context: Object,
+        options: ExecuteOptions
+): any {
+
+
+
+
     //execute the expressions
     const resultA = handleType(
         treeNode.expressions[0],
