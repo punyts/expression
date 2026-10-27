@@ -305,7 +305,8 @@ function handleIterator(treeNode: IteratorNode, context: Object, options: Execut
     const dir = !!treeNode.sort
         && treeNode.sort.direction;
     const filter = treeNode.filter;
-    const step = treeNode.step as number;
+    //the parser doesn't set a step, so default to walking forward one item at a time
+    const step = treeNode.step ?? 1;
 
     if (typeof set !== "object")
         throw new Error(
@@ -325,20 +326,32 @@ function handleIterator(treeNode: IteratorNode, context: Object, options: Execut
 
     //sort if we have a sort
     if (!!sort) {
+        //record positions before sorting, since keys is reordered in place while the comparator runs
+        const positions = new Map(keys.map((key, position) => [key, position]));
+        const { key: keyName, index: indexName, value: valueName } = treeNode.lookup;
+        const valuePrefix = !!valueName && `${valueName}.`;
 
-
-
+        const sortValue = (key: string) => {
+            if (sort === keyName) {
+                return key;
+            }
+            if (sort === indexName) {
+                return positions.get(key);
+            }
+            if (sort === valueName) {
+                return coll[key];
+            }
+            //sort by a path on the item, e.g. "$v.name" reads the item's name
+            if (!!valuePrefix && sort.startsWith(valuePrefix)) {
+                return lookupPath(sort.slice(valuePrefix.length), coll[key]);
+            }
+            return lookupPath(sort, coll[key]);
+        };
 
         keys.sort(
             function sortKeys(k1, k2) {
-                const k1Val = sort === treeNode.lookup.key && k1
-                    || sort === treeNode.lookup.index && keys.indexOf(k1)
-                    || sort === treeNode.lookup.value && coll[k1]
-                    || lookupPath(sort, coll[k1]);
-                const k2Val = sort === treeNode.lookup.key && k2
-                    || sort === treeNode.lookup.index && keys.indexOf(k2)
-                    || sort === treeNode.lookup.value && coll[k2]
-                    || lookupPath(sort, coll[k2]);
+                const k1Val = sortValue(k1);
+                const k2Val = sortValue(k2);
                 if (k1Val < k2Val) {
                     return dir === "asc"
                         && -1
@@ -349,7 +362,7 @@ function handleIterator(treeNode: IteratorNode, context: Object, options: Execut
                         && 1
                         || -1;
                 }
-                return 1;
+                return 0;
             }
         );
     }
@@ -422,9 +435,22 @@ function lookupPath(path: string, context: Object) {
         return undefined;
     }
 
+    let obj: any = context;
+    let remainingPath = path.trim();
+
+    // A $-named first segment ("$v.name") is read verbatim when the context has that key,
+    // own or inherited, so iterator locals like $k, $i and $v resolve; otherwise fall back to stripping the "$"
+    if (remainingPath.startsWith("$") && !remainingPath.startsWith("$.") && remainingPath !== "$") {
+        const firstSegment = remainingPath.match(/^[^.[]+/)![0];
+        const isObjectLike = obj !== null && (typeof obj === "object" || typeof obj === "function");
+        if (isObjectLike && firstSegment in obj) {
+            obj = obj[firstSegment];
+            remainingPath = remainingPath.slice(firstSegment.length);
+        }
+    }
+
     // Normalize dot and bracket notation into a consistent token list.
-    const normalizedPath = path
-        .trim()
+    const normalizedPath = remainingPath
         .replace(/^\$\.?/, "")
         .replace(/\[(\d+)\]/g, ".$1")
         .replace(/\[['"]([^'"\]]+)['"]\]/g, ".$1");
@@ -433,7 +459,6 @@ function lookupPath(path: string, context: Object) {
         .split(".")
         .filter((segment) => segment.length > 0);
 
-    let obj: any = context;
     for (const segment of segments) {
         if (obj == null) {
             return undefined;
@@ -487,7 +512,8 @@ function filterCollection(coll: Record<string | symbol | number, any>, filter: E
                 , options
             );
 
-            if (result != null) {
+            //keep the item when the filter is truthy; a false comparison must drop it
+            if (!!result) {
                 const value = coll[key];
                 if (isAr)
                     filtered.push(value);

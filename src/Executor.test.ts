@@ -852,3 +852,171 @@ describe("Iterator filter on an array (characterisation)", () => {
         expect(iterator.next().k).toBe('1');
     });
 });
+
+describe("Iterator locals and $-named context keys (AMM-1583)", () => {
+    const drain = (iterator: { next: () => any }) => {
+        const rows: any[] = [];
+        for (let row = iterator.next(); row !== undefined; row = iterator.next()) {
+            rows.push(row);
+        }
+        return rows;
+    };
+    const people = () => [
+        { name: 'Cara', age: 3 },
+        { name: 'Abe', age: 1 },
+        { name: 'Bo', age: 2 }
+    ];
+
+    it('should read a $-named own property verbatim when quiet is false', () => {
+        // Arrange
+        const expr = Expression('$v.name');
+
+        // Act
+        const result = expr.execute({ $v: { name: 'x' } }, { quiet: false });
+
+        // Assert
+        expect(result).toBe('x');
+    });
+
+    it('should read a $-named key inherited through the prototype chain', () => {
+        // Arrange (iterator rows are Object.create(context) with the locals as own props)
+        const row = Object.create({ $v: { name: 'inherited' } });
+
+        // Act
+        const result = Expression('$v.name').execute(row, { quiet: false });
+
+        // Assert
+        expect(result).toBe('inherited');
+    });
+
+    it('should resolve $.a.b, $, a.b and $my.variable as before when no $-named key exists', () => {
+        // Arrange
+        const context = { a: { b: 1 }, my: { variable: 2 } };
+
+        // Act / Assert
+        expect(Expression('$.a.b').execute(context, { quiet: false })).toBe(1);
+        expect(Expression('a.b').execute(context, { quiet: false })).toBe(1);
+        expect(Expression('$my.variable').execute(context, { quiet: false })).toBe(2);
+        expect(Expression('$').execute(context, { quiet: false })).toBe(context);
+    });
+
+    it('should prefer the $-named key over the stripped name when both exist', () => {
+        // Arrange
+        const context = { $v: { name: 'local' }, v: { name: 'global' } };
+
+        // Act
+        const result = Expression('$v.name').execute(context, { quiet: false });
+
+        // Assert
+        expect(result).toBe('local');
+    });
+
+    it('should filter an array collection by an iterator local', () => {
+        // Arrange
+        const expr = Expression('$k,$i,$v in $.list filter $v.age > 1');
+
+        // Act
+        const iterator = expr.execute({ list: people() }, { quiet: false });
+
+        // Assert
+        expect(iterator.collection.map((p: { name: string }) => p.name)).toEqual(['Cara', 'Bo']);
+        expect(drain(iterator).map((row) => row.$v.name)).toEqual(['Cara', 'Bo']);
+    });
+
+    it('should filter an object collection by an iterator local and keep the keys', () => {
+        // Arrange
+        const expr = Expression('$k,$i,$v in $.list filter $v.age > 1');
+        const list = { c: { name: 'Cara', age: 3 }, a: { name: 'Abe', age: 1 }, b: { name: 'Bo', age: 2 } };
+
+        // Act
+        const iterator = expr.execute({ list }, { quiet: false });
+
+        // Assert
+        expect(iterator.keys).toEqual(['c', 'b']);
+        expect(drain(iterator).map((row) => row.$k)).toEqual(['c', 'b']);
+    });
+
+    it('should filter by the key local', () => {
+        // Arrange
+        const expr = Expression("$k,$i,$v in $.list filter $k !== 'a'");
+        const list = { a: 1, b: 2, c: 3 };
+
+        // Act
+        const iterator = expr.execute({ list }, { quiet: false });
+
+        // Assert
+        expect(iterator.keys).toEqual(['b', 'c']);
+    });
+
+    it('should iterate every item of an iterator parsed from a string', () => {
+        // Arrange (the parser sets no step, so next() must default to a step of 1)
+        const expr = Expression('$k,$i,$v in $.list');
+
+        // Act
+        const rows = drain(expr.execute({ list: ['a', 'b', 'c'] }, { quiet: false }));
+
+        // Assert
+        expect(rows.map((row) => row.$v)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('should sort by a path on the value local ascending', () => {
+        // Arrange
+        const expr = Expression('$k,$i,$v in $.list sort $v.name asc');
+
+        // Act
+        const rows = drain(expr.execute({ list: people() }, { quiet: false }));
+
+        // Assert
+        expect(rows.map((row) => row.$v.name)).toEqual(['Abe', 'Bo', 'Cara']);
+    });
+
+    it('should sort by a path on the value local descending', () => {
+        // Arrange
+        const expr = Expression('$k,$i,$v in $.list sort $v.name desc');
+
+        // Act
+        const rows = drain(expr.execute({ list: people() }, { quiet: false }));
+
+        // Assert
+        expect(rows.map((row) => row.$v.name)).toEqual(['Cara', 'Bo', 'Abe']);
+    });
+
+    it('should sort by an item property name as before', () => {
+        // Arrange
+        const asc = Expression('$k,$i,$v in $.list sort age');
+        const desc = Expression('$k,$i,$v in $.list sort age desc');
+
+        // Act
+        const ascRows = drain(asc.execute({ list: people() }, { quiet: false }));
+        const descRows = drain(desc.execute({ list: people() }, { quiet: false }));
+
+        // Assert
+        expect(ascRows.map((row) => row.$v.age)).toEqual([1, 2, 3]);
+        expect(descRows.map((row) => row.$v.age)).toEqual([3, 2, 1]);
+    });
+
+    it('should sort by the value local itself, including falsy values', () => {
+        // Arrange
+        const asc = Expression('$k,$i,$v in $.list sort $v');
+        const desc = Expression('$k,$i,$v in $.list sort $v desc');
+
+        // Act
+        const ascRows = drain(asc.execute({ list: [2, 0, 1] }, { quiet: false }));
+        const descRows = drain(desc.execute({ list: [2, 0, 1] }, { quiet: false }));
+
+        // Assert
+        expect(ascRows.map((row) => row.$v)).toEqual([0, 1, 2]);
+        expect(descRows.map((row) => row.$v)).toEqual([2, 1, 0]);
+    });
+
+    it('should sort by the index local using positions before sorting', () => {
+        // Arrange
+        const expr = Expression('$k,$i,$v in $.list sort $i desc');
+
+        // Act
+        const rows = drain(expr.execute({ list: ['a', 'b', 'c', 'd'] }, { quiet: false }));
+
+        // Assert
+        expect(rows.map((row) => row.$v)).toEqual(['d', 'c', 'b', 'a']);
+    });
+});
