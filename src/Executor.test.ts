@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Executor from "./Executor.js";
+import Expression from "./index.js";
 import { 
     ArrayNode, 
     ChainNode, 
@@ -820,4 +821,34 @@ describe('Executor', () => {
         expect(Executor(chainNode, mockContext, mockOptions)).toEqual(undefined);
     });
 
+});
+
+describe("Iterator filter on an array (characterisation)", () => {
+    // Epic 4 Story 2 (StateUI repeat) relies on this: filtering an array compacts it,
+    // so iterator keys are re-indexed and no longer equal the source array indices
+    it('should return a compacted array whose keys are re-indexed from "0"', () => {
+        // Arrange: the locals aren't $-named and the filter resolves to undefined for dropped items,
+        // so this documents behaviour that holds both before and after the AMM-1583 fixes
+        const iteratorNode: IteratorNode = {
+            type: 'iterator',
+            collection: {
+                type: 'literal',
+                value: [{ id: 'a', keep: 1 }, { id: 'x' }, { id: 'b', keep: 1 }, { id: 'y' }, { id: 'c', keep: 1 }]
+            },
+            operator: 'in',
+            lookup: { key: 'k', value: 'item' },
+            filter: { type: 'variable', path: 'item.keep' },
+            step: 1
+        };
+
+        // Act
+        const iterator = Executor(iteratorNode, {}, { quiet: true });
+
+        // Assert
+        expect(Array.isArray(iterator.collection)).toBe(true);
+        expect(iterator.collection.map((item: { id: string }) => item.id)).toEqual(['a', 'b', 'c']);
+        expect(iterator.keys).toEqual(['0', '1', '2']);
+        expect(iterator.next().k).toBe('0');
+        expect(iterator.next().k).toBe('1');
+    });
 });
