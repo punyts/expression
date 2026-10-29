@@ -11,3 +11,4 @@ export default function Expression(expressionStr: string) {
         execute: (context: Object, options?: ExecuteOptions) => Executor(tree.node, context, options)
     } as CompiledExpression;
 }
+export type { CompiledExpression, ExecuteOptions } from "./Types.js";
