@@ -192,50 +192,64 @@ function parse(
         strings: string[],
         strippedExpressionStr: string
 ): ExpressionTree {
-
-
-
-
-    let node: ExpressionNode;
-    //a ternary has the lowest precedence, so its test and branches may hold "||" and "&&" chains
-    const ternary = findTernary(strippedExpressionStr);
-    if (ternary) {
-        node = parseTernary(
+    return {
+        node: parseNode(
             variables,
             strings,
-            strippedExpressionStr,
+            strippedExpressionStr
+        ),
+        variables
+    };
+}
+
+/**
+ * Parses a whole expression, or an iterator's filter, where "||" and "&&" chains are allowed
+ * @param variables
+ * @param strings
+ * @param expressionStr
+ */
+function parseNode(variables: string[], strings: string[], expressionStr: string): ExpressionNode {
+    //an iterator owns any "||", "&&" or ternary in its filter, so it is matched before they are split
+    const iterMatch = expressionStr.match(ITER_PATT);
+    if (iterMatch) {
+        return parseIterator(
+            variables,
+            strings,
+            iterMatch
+        );
+    }
+    //a ternary has the lowest precedence, so its test and branches may hold "||" and "&&" chains
+    const ternary = findTernary(expressionStr);
+    if (ternary) {
+        return parseTernary(
+            variables,
+            strings,
+            expressionStr,
             ternary
         );
     }
     //an object literal owns any "||" or "&&" in its values
-    else if (isObjectLiteral(strippedExpressionStr)) {
-        node = parseObject(
+    if (isObjectLiteral(expressionStr)) {
+        return parseObject(
             variables,
             strings,
-            strippedExpressionStr
+            expressionStr
         );
     }
     //first step is to split any "||" or "&&"
-    else if (strippedExpressionStr.match(HAS_AND_OR_PATT)) {
-        node = splitLogical(
+    if (expressionStr.match(HAS_AND_OR_PATT)) {
+        return splitLogical(
             variables,
             strings,
-            strippedExpressionStr
+            expressionStr
         );
     }
     //otherwise just parse the expression
-    else {
-        node = parseExpression(
-            variables,
-            strings,
-            strippedExpressionStr
-        );
-    }
-
-    return {
-        node,
-        variables
-    };
+    return parseExpression(
+        variables,
+        strings,
+        expressionStr
+    );
 }
 
 function splitLogical(variables: string[], strings: string[], expressionStr: string) {
@@ -398,7 +412,7 @@ function parseIterator(variables: string[], strings: string[], match: RegExpMatc
         }
     }
     if (!!match[8]) {
-        treeNode.filter = parseExpression(
+        treeNode.filter = parseNode(
             variables
             , strings
             , match[8]

@@ -948,6 +948,56 @@ describe("Iterator locals and $-named context keys (AMM-1583)", () => {
         expect(iterator.keys).toEqual(['b', 'c']);
     });
 
+    it.each([
+        [false, [1, 2, 3]],
+        [true, [1, 3]],
+    ])('should apply both operands of an || filter when hideDone is %s', (hideDone, expected) => {
+        // Arrange
+        const expr = Expression('$k,$i,$v in $.tasks filter !$v.done || !$.hideDone');
+        const tasks = Object.freeze([{ id: 1, done: false }, { id: 2, done: true }, { id: 3, done: false }]);
+
+        // Act
+        const iterator = expr.execute({ hideDone, tasks }, { quiet: false });
+
+        // Assert
+        expect(drain(iterator).map((row) => row.$v.id)).toEqual(expected);
+    });
+
+    it('should return an iterator filtered by both operands of an && filter', () => {
+        // Arrange
+        const expr = Expression('$k,$i,$v in $.list filter $v.age > 1 && $v.name !== \'Bo\'');
+
+        // Act
+        const iterator = expr.execute({ list: people() }, { quiet: false });
+
+        // Assert
+        expect(drain(iterator).map((row) => row.$v.name)).toEqual(['Cara']);
+    });
+
+    it('should sort and then apply an || filter', () => {
+        // Arrange
+        const expr = Expression('$k,$i,$v in $.list sort $v.age desc filter $v.age === 1 || $v.name === \'Cara\'');
+
+        // Act
+        const iterator = expr.execute({ list: people() }, { quiet: false });
+
+        // Assert
+        expect(drain(iterator).map((row) => row.$v.name)).toEqual(['Cara', 'Abe']);
+    });
+
+    it('should apply a ternary filter', () => {
+        // Arrange
+        const expr = Expression('$k,$i,$v in $.list filter $.adultsOnly ? $v.age > 1 : true');
+
+        // Act
+        const adults = drain(expr.execute({ adultsOnly: true, list: people() }, { quiet: false }));
+        const everyone = drain(expr.execute({ adultsOnly: false, list: people() }, { quiet: false }));
+
+        // Assert
+        expect(adults.map((row) => row.$v.name)).toEqual(['Cara', 'Bo']);
+        expect(everyone).toHaveLength(3);
+    });
+
     it('should iterate every item of an iterator parsed from a string', () => {
         // Arrange (the parser sets no step, so next() must default to a step of 1)
         const expr = Expression('$k,$i,$v in $.list');
