@@ -25,10 +25,24 @@ import {
 */
 const BIND_FUNC_PATT = /^\(([^)]+)\) ?=> ?([A-Za-z0-9$.,"`'\[\]_\<\>]+)$/;
 /**
-* A regular expression pattern to match object patterns in expressions
+* A regular expression pattern to match an unquoted object literal key
 * @property
 */
-const OBJ_PATT = /^\{.*\}$/;
+const OBJ_KEY_PATT = /^(?:[A-Za-z_$][A-Za-z0-9_$]*|[0-9]+)$/;
+/**
+* A regular expression pattern to match a quoted (placeholder) object literal key
+* @property
+*/
+const OBJ_STRING_KEY_PATT = /^"<([0-9]+)>"$/;
+/**
+* The closing character for each grouping character
+* @field
+*/
+const GROUP_PAIRS: Record<string, string> = {
+    "{": "}"
+    , "[": "]"
+    , "(": ")"
+};
 /**
 * A regular expression pattern to match array patterns in expressions
 * @property
@@ -142,6 +156,7 @@ const operatorPrecedence: Record<string, RegExp> = {
 
 const ERROR_INVALID_EXPRESSION = "[Invalid Expression] The expression does not fit any expression patterns.";
 const ERROR_INVALID_OPERATOR = "[Invalid Operator] Unable to locate the operator";
+const ERROR_INVALID_OBJECT = "[Invalid Object] Object literal entries must be written as key: value";
 
 export default function Parser(expressionStr: string) {
     const variables: string[] = [];
@@ -181,8 +196,16 @@ function parse(
 
 
     let node: ExpressionNode;
+    //an object literal owns any "||" or "&&" in its values
+    if (isObjectLiteral(strippedExpressionStr)) {
+        node = parseObject(
+            variables,
+            strings,
+            strippedExpressionStr
+        );
+    }
     //first step is to split any "||" or "&&"
-    if (strippedExpressionStr.match(HAS_AND_OR_PATT)) {
+    else if (strippedExpressionStr.match(HAS_AND_OR_PATT)) {
         node = splitLogical(
             variables,
             strings,
@@ -238,8 +261,16 @@ function splitLogical(variables: string[], strings: string[], expressionStr: str
 
 function parseExpression(variables: string[], strings: string[], expressionStr: string) {
     var match;
+    //an object literal is parsed whole so its values are not split
+    if (isObjectLiteral(expressionStr)) {
+        return parseObject(
+            variables
+            , strings
+            , expressionStr
+        );
+    }
     //see if this has a concatination operation
-    if (expressionStr.match(CONCAT_PATT)) {
+    else if (expressionStr.match(CONCAT_PATT)) {
         return parseConcat(
             variables
             , strings
@@ -413,11 +444,11 @@ function parseValueExpression(variables: string[], strings: string[], expression
             );
         }
         //or an object literal
-        else if (!!(match = expressionStr.match(OBJ_PATT))) {
+        else if (isObjectLiteral(expressionStr)) {
             return parseObject(
                 variables
                 , strings
-                , match[0]
+                , expressionStr
             );
         }
         //or regular expressions
@@ -559,7 +590,7 @@ function extractArguments(expression: string) {
 }
 
 function parseArray(variables: string[], strings: string[], value: string) {
-    const arrayMemebers = value.split(",");
+    const arrayMemebers = splitTopLevel(value, ",");
     const treeNode: ArrayNode = {
         type: "array",
         members: []
@@ -583,36 +614,100 @@ function parseArray(variables: string[], strings: string[], value: string) {
 
 }
 
-function parseObject(variables: string[], strings: string[], json: string) {
-    const valueObj = JSON.parse(json)
+function parseObject(variables: string[], strings: string[], objectStr: string) {
+    const body = objectStr.trim().slice(1, -1);
     const treeNode: ObjectNode = {
         type: "object",
         properties: {}
     };
-    //process the object properties, they could be expressions also
-    Object.keys(valueObj)
+    //an empty object has no entries
+    if (body.trim() === "") {
+        return treeNode;
+    }
+    //process the object entries, each value is an expression
+    splitTopLevel(body, ",")
         .forEach(
-            function forEachKey(key) {
-                const value = valueObj[key];
-                const keyIndex = key.matchAll(STRING_PLACEHOLDER_PATT).next()?.value?.[1] as unknown as string;
-                const propMatch = value.matchAll(STRING_PLACEHOLDER_PATT).next()?.value;
-                const propIndex = !!propMatch
-                    && propMatch[1];
-                const propName = strings[parseInt(keyIndex)];
-                const propValue = !!propMatch
-                    ? strings[propIndex]
-                    : value;
-
+            function forEachEntry(entryStr, index, entries) {
+                //allow a trailing comma
+                if (entryStr.trim() === "" && index === entries.length - 1) {
+                    return;
+                }
+                const [keyStr, ...valueParts] = splitTopLevel(entryStr, ":");
+                if (valueParts.length === 0) {
+                    throw new Error(
+                        `${ERROR_INVALID_OBJECT} ("${entryStr.trim()}")`
+                    );
+                }
+                const propName = parseObjectKey(strings, keyStr.trim());
                 const expr = parse(
                     variables
                     , strings
-                    , propValue
+                    , valueParts.join(":").trim()
                 );
-                treeNode.properties[propName] = expr;
+                treeNode.properties[propName] = expr.node;
             }
         );
 
     return treeNode;
+}
+
+function parseObjectKey(strings: string[], keyStr: string) {
+    let match: RegExpMatchArray | null;
+    if (!!(match = keyStr.match(OBJ_STRING_KEY_PATT))) {
+        return strings[parseInt(match[1])];
+    }
+    if (OBJ_KEY_PATT.test(keyStr)) {
+        return keyStr;
+    }
+    throw new Error(
+        `${ERROR_INVALID_OBJECT} ("${keyStr}")`
+    );
+}
+
+function isObjectLiteral(expressionStr: string) {
+    const trimmed = expressionStr.trim();
+    return trimmed.startsWith("{")
+        && findGroupEnd(trimmed, 0) === trimmed.length - 1;
+}
+
+function findGroupEnd(expressionStr: string, openIndex: number) {
+    //track the open groups so nested braces and brackets are skipped
+    const closers: string[] = [];
+    for (let i = openIndex; i < expressionStr.length; i++) {
+        const char = expressionStr[i];
+        if (GROUP_PAIRS[char]) {
+            closers.push(GROUP_PAIRS[char]);
+        }
+        else if (char === closers[closers.length - 1]) {
+            closers.pop();
+            if (closers.length === 0) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+function splitTopLevel(expressionStr: string, separator: string) {
+    //split on the separator only where it is outside of any group
+    const parts: string[] = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < expressionStr.length; i++) {
+        const char = expressionStr[i];
+        if (GROUP_PAIRS[char]) {
+            depth++;
+        }
+        else if (char === "}" || char === "]" || char === ")") {
+            depth--;
+        }
+        else if (char === separator && depth === 0) {
+            parts.push(expressionStr.substring(start, i));
+            start = i + 1;
+        }
+    }
+    parts.push(expressionStr.substring(start));
+    return parts;
 }
 
 function parseRegExpMatch(variables: string[], strings: string[], lookup: string, pattern: string, flags: string) {

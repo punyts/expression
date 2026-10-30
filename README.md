@@ -37,6 +37,7 @@ const result = expr(context);
 
 * Literal
 * Variable
+* Object
 * Concat
 * Not
 * Function
@@ -63,6 +64,15 @@ A variable expression is a path that points to a property in the context object.
 
 ```
 const varExpr1 = "$.path.to.my.var";
+```
+
+### Object
+
+An object expression builds a new object. Keys are written as identifiers, numbers or quoted strings, and each value is any expression: a literal, a variable path, an operator, a nested object or an array.
+
+```
+const obj1 = "{a: 1, 'b c': $.path.to.my.var}";
+const obj2 = "{total: $.price * $.qty, tags: ['x', $.tag], meta: {ok: $.count > 0} }";
 ```
 
 ### Concat

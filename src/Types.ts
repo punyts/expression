@@ -78,7 +78,7 @@ export interface TypeNode extends ParsedNode {
 }
 
 export interface ObjectNode extends ParsedNode {
-    properties: Record<string, any>;
+    properties: Record<string, ExpressionNode>;
 }
 
 export interface ChainNode extends ParsedNode {

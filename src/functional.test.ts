@@ -28,3 +28,46 @@ describe("Execute concat expression", () => {
         expect(result).toBe("Lucas Chen");
     });
 });
+describe("Execute object literal expressions", () => {
+    it("should build an object with an unquoted key", () => {
+        expect(Expression("{a:1}").execute({})).toEqual({ a: 1 });
+    });
+
+    it("should build an object with a quoted key", () => {
+        expect(Expression('{"a":1}').execute({})).toEqual({ a: 1 });
+        expect(Expression("{'a b': 'c'}").execute({})).toEqual({ "a b": "c" });
+    });
+
+    it("should evaluate expression, string and nested object values", () => {
+        const expr = Expression("{a: $.x, b: 'str', c: {d: 2} }");
+
+        expect(expr.execute({ x: 5 })).toEqual({ a: 5, b: "str", c: { d: 2 } });
+        expect(expr.variables).toEqual(["$.x"]);
+    });
+
+    it("should evaluate array values", () => {
+        const expr = Expression("{list: [1, $.y, 'z'], objs: [{a: 1}, {a: 2}] }");
+
+        expect(expr.execute({ y: 2 })).toEqual({ list: [1, 2, "z"], objs: [{ a: 1 }, { a: 2 }] });
+    });
+
+    it("should evaluate nested expression values closed with } }", () => {
+        const expr = Expression('{"a":{"b":$.a} }');
+
+        expect(expr.execute({ a: "v" })).toEqual({ a: { b: "v" } });
+    });
+
+    it("should evaluate operator, conditional and logical values", () => {
+        const expr = Expression("{sum: $.n + 1, big: $.n > 2, either: $.f || $.n, label: 'x:' +++ $.n}");
+
+        expect(expr.execute({ n: 3, f: false })).toEqual({ sum: 4, big: true, either: 3, label: "x:3" });
+    });
+
+    it("should build an empty object", () => {
+        expect(Expression("{}").execute({})).toEqual({});
+    });
+
+    it("should reject an entry without a key", () => {
+        expect(() => Expression("{a: 1, 2}")).toThrow();
+    });
+});

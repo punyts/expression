@@ -382,7 +382,32 @@ describe('Parser', () => {
 
         it('should parse object literals', () => {
             const result = Parser('{ "key": "value" }');
-            expect(result).toEqual({ "node": { "properties": { "key": { "node": { "path": "value", "type": "variable" }, "variables": ["value"] } }, "type": "object" }, "variables": ["value"] });
+            expect(result).toEqual({ "node": { "properties": { "key": { "type": "literal", "value": "value" } }, "type": "object" }, "variables": [] });
+        });
+
+        it('should parse object literals with unquoted keys and expression values', () => {
+            const result = Parser('{ a: $.x, b: { c: [1, $.y] } }');
+            expect(result).toEqual({
+                node: {
+                    type: 'object',
+                    properties: {
+                        a: { type: 'variable', path: '$.x' },
+                        b: {
+                            type: 'object',
+                            properties: {
+                                c: {
+                                    type: 'array',
+                                    members: [
+                                        { type: 'literal', value: 1 },
+                                        { type: 'variable', path: '$.y' },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                },
+                variables: ['$.x', '$.y'],
+            });
         });
     });
 
