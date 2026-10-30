@@ -15,6 +15,7 @@ import {
     OperatorNode, 
     RegExpMatchNode, 
     RegExpNode, 
+    TernaryNode, 
     TypeNode, 
     VariableNode 
 } from "./Types.js";
@@ -49,6 +50,12 @@ function handleType(
 
 
     switch (treeNode.type) {
+        case "ternary":
+            return handleTernary(
+                treeNode as TernaryNode,
+                context,
+                options
+            );
         case "chain":
             return handleChain(
                 treeNode as ChainNode,
@@ -198,6 +205,13 @@ function findNextORIndex(curIndex: number, section: ExpressionNode, index: numbe
         return true;
     }
     return false;
+}
+
+function handleTernary(treeNode: TernaryNode, context: Object, options: ExecuteOptions) {
+    //evaluate only the branch that is taken
+    return handleType(treeNode.test, context, options)
+        ? handleType(treeNode.consequent, context, options)
+        : handleType(treeNode.alternate, context, options);
 }
 
 function handleConditional(treeNode: ConditionalNode, context: Object, options: ExecuteOptions) {

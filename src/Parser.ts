@@ -15,8 +15,9 @@ import {
     RegExpNode, 
     NotNode, 
     ConcatNode, 
-    OperatorNode, 
-    LogicalNode 
+    OperatorNode,
+    LogicalNode,
+    TernaryNode
 } from "./Types.js";
 
 /**
@@ -196,8 +197,18 @@ function parse(
 
 
     let node: ExpressionNode;
+    //a ternary has the lowest precedence, so its test and branches may hold "||" and "&&" chains
+    const ternary = findTernary(strippedExpressionStr);
+    if (ternary) {
+        node = parseTernary(
+            variables,
+            strings,
+            strippedExpressionStr,
+            ternary
+        );
+    }
     //an object literal owns any "||" or "&&" in its values
-    if (isObjectLiteral(strippedExpressionStr)) {
+    else if (isObjectLiteral(strippedExpressionStr)) {
         node = parseObject(
             variables,
             strings,
@@ -261,8 +272,18 @@ function splitLogical(variables: string[], strings: string[], expressionStr: str
 
 function parseExpression(variables: string[], strings: string[], expressionStr: string) {
     var match;
+    //a ternary nested in an argument, array member or object value
+    const ternary = findTernary(expressionStr);
+    if (ternary) {
+        return parseTernary(
+            variables
+            , strings
+            , expressionStr
+            , ternary
+        );
+    }
     //an object literal is parsed whole so its values are not split
-    if (isObjectLiteral(expressionStr)) {
+    else if (isObjectLiteral(expressionStr)) {
         return parseObject(
             variables
             , strings
@@ -662,6 +683,77 @@ function parseObjectKey(strings: string[], keyStr: string) {
     throw new Error(
         `${ERROR_INVALID_OBJECT} ("${keyStr}")`
     );
+}
+
+/**
+ * True when the "?" or ":" at index stands alone with whitespace on both sides, so "/colou?r/", "{a: 1}" and "??"
+ * are never taken for a ternary
+ * @param expressionStr
+ * @param index
+ */
+function isSpacedTernaryToken(expressionStr: string, index: number) {
+    const before = expressionStr[index - 1];
+    const after = expressionStr[index + 1];
+    return before !== undefined
+        && after !== undefined
+        && /\s/.test(before)
+        && /\s/.test(after);
+}
+
+/**
+ * Finds the top-level "?" and its matching ":" of a ternary, outside any group. Strings are already placeholders.
+ * The first "?" is the outermost (the test can't contain an unbracketed ternary), and nested ternaries in the
+ * consequent are skipped by counting, so "a ? b ? c : d : e" pairs the first "?" with the last ":", while
+ * "a ? b : c ? d : e" nests in the alternate (right-associative)
+ * @param expressionStr
+ */
+function findTernary(expressionStr: string) {
+    let depth = 0;
+    let question = -1;
+    let pending = 0;
+    for (let i = 0; i < expressionStr.length; i++) {
+        const char = expressionStr[i];
+        if (GROUP_PAIRS[char]) {
+            depth++;
+        }
+        else if (char === "}" || char === "]" || char === ")") {
+            depth--;
+        }
+        else if (depth !== 0 || !isSpacedTernaryToken(expressionStr, i)) {
+            continue;
+        }
+        else if (char === "?") {
+            if (question === -1) {
+                question = i;
+            }
+            else {
+                pending++;
+            }
+        }
+        else if (char === ":" && question !== -1) {
+            if (pending === 0) {
+                return { question, colon: i };
+            }
+            pending--;
+        }
+    }
+    return null;
+}
+
+function parseTernary(variables: string[], strings: string[], expressionStr: string, ternary: { question: number, colon: number }) {
+    //each part is parsed like a whole expression, so a "||" or "&&" chain in it stays intact
+    const parsePart = (partStr: string) => parse(
+        variables
+        , strings
+        , partStr.trim()
+    ).node;
+    const treeNode: TernaryNode = {
+        type: "ternary",
+        test: parsePart(expressionStr.substring(0, ternary.question)),
+        consequent: parsePart(expressionStr.substring(ternary.question + 1, ternary.colon)),
+        alternate: parsePart(expressionStr.substring(ternary.colon + 1))
+    };
+    return treeNode;
 }
 
 function isObjectLiteral(expressionStr: string) {
