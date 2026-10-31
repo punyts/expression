@@ -46,6 +46,8 @@ const result = expr(context);
 * RegEx Match
 * Iterator
 * Chain
+* Ternary
+* Group (parentheses)
 
 
 ### Literal
@@ -173,3 +175,61 @@ A chain expression ties other expressions together with logical ANDs(&&) and ORs
 ```
 const chain1 = "$.my.val1 === 1 && 'green' || 'blue'";
 ```
+
+### Ternary
+
+A ternary expression picks one of two expressions from a test: `test ? consequent : alternate`. The `?` and `:` are surrounded by spaces. Only the branch that is taken is evaluated.
+
+```
+const ternary1 = "$.selected ? 'on' : ''";
+const ternary2 = "$.a ? 'p' : $.b ? 'q' : 'r'";
+```
+
+### Group
+
+Parentheses group an expression so it is parsed and evaluated as a whole. A group can hold any expression and can be used wherever an expression is accepted: as an operand of `!`, a comparison, an arithmetic operator, `&&`, `||`, as a ternary test or branch, in a function argument, an array member, an object value or an iterator filter. The parentheses of a function call and of a bind are not groups.
+
+```
+const group1 = "($.a || $.b) && $.c";
+const group2 = "!($.a && $.b)";
+const group3 = "$.n * ($.n + 1)";
+const group4 = "$k,$i,$v in $.list filter ($v.age === 1 || $v.age === 3) && $v.name !== 'Cara'";
+```
+
+A "/" that is not a division must not be written with a space on both sides, so a regular expression literal such as `/^(x|y)$/g` keeps its parentheses; write division with a space on each side (`$.a / ($.b + 1)`).
+
+## Precedence
+
+From the tightest binding to the loosest:
+
+1. Parenthesised groups, function calls, literals and variable paths
+2. `!` and `!!`, which negate only the operand after them, as in JavaScript: `!$.n > 2` is `(!$.n) > 2`. Write `!($.n > 2)` to negate a comparison.
+3. Arithmetic operators (`**`, `*`, `/`, `%`, `+`, `-`, `<<`, `>>`, `>>>`) and `+++` (concat)
+4. Comparisons (`==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=`, `is`, `!is`, `isin`, `!isin`)
+5. `&&`
+6. `||`
+7. Ternary `? :` (right-associative; the test and both branches may hold `&&` and `||` chains)
+
+`&&` and `||` return the value of the last operand they evaluated, as JavaScript does: `0 && 10` is `0`, `$.b || $.d && $.c` with b=0, d=null is `null`, and `'a' || 'b'` is `'a'`.
+
+An iterator owns everything after `filter`, so `||`, `&&`, groups and a ternary in the filter belong to the filter. The `||`/`&&` filter fix (commit `e2d5085`) is covered by tests in `src/Executor.test.ts` ("should apply both operands of an || filter", "should return an iterator filtered by both operands of an && filter", "should sort and then apply an || filter", "should apply a ternary filter").
+
+### Characterised results
+
+These results are pinned by `src/Grammar.test.ts`:
+
+| Expression | Context | Result |
+| -- | -- | -- |
+| `$.a || $.b && $.d` | a=1, b=0, d=null | `1` (`&&` binds tighter) |
+| `$.b || $.a && $.c` | a=1, b=0, c='x' | `'x'` |
+| `$.a && $.c` | a=1, c='x' | `'x'` |
+| `$.a && $.c` | a=0, c='x' | `0` |
+| `$.a || $.c` | a=0, c='x' | `'x'`; a truthy first operand is returned as is |
+| `$.b || $.d && $.c` | b=0, d=null | `null` |
+| `!$.n > 2` | n=3 / n=0 | `false` / `false` (`(!$.n) > 2`) |
+| `!($.n > 2)` | n=3 / n=0 | `false` / `true` |
+| `!$.a + 1` | a=0 | `2` (`(!$.a) + 1`) |
+| `$.n > 2 && $.n < 5` | n=3 | `true` |
+| `$.a ? 'p' : $.b ? 'q' : 'r'` | a=0, b=1 | `'q'` (nests in the alternate) |
+| `$.a || $.b ? 'yes' : 'no'` | a=0, b=1 | `'yes'` |
+| `($.a || $.b) && $.d` | a=1, b=0, d=0 | `0` (the group is evaluated first) |

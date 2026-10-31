@@ -818,7 +818,7 @@ describe('Executor', () => {
                 { type: 'literal', value: 10 }
             ],
         };
-        expect(Executor(chainNode, mockContext, mockOptions)).toEqual(undefined);
+        expect(Executor(chainNode, mockContext, mockOptions)).toEqual(0);
     });
 
 });

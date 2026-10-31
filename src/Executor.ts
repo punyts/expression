@@ -142,69 +142,35 @@ function handleType(
 }
 
 function handleChain(treeNode: ChainNode, context: Object, options: ExecuteOptions) {
-    const sections = treeNode.sections
+    const sections = treeNode.sections;
 
-    let lastResult;
-    let nextORIndex;
-
-    //loop through the chain sections
-    for (
-        let i = 0
-        , len = sections.length
-        , last = len - 1;
-        i < len;
-        i = i + 2
-    ) {
-        //get the result for this section
-        const result = handleType(
+    //"&&" binds tighter than "||", and the result is the value of the last operand evaluated, as in JavaScript
+    let result;
+    let i = 0;
+    while (i < sections.length) {
+        //evaluate a run of "&&" operands until one is falsey
+        result = handleType(
             sections[i]
             , context
             , options
         );
-        //is this the last in the chain
-        if (i === last) {
+        while (i + 1 < sections.length && (sections[i + 1] as LogicalNode).value === "&&") {
+            if (result) {
+                result = handleType(
+                    sections[i + 2]
+                    , context
+                    , options
+                );
+            }
+            i = i + 2;
+        }
+        //a truthy run ends the chain, otherwise carry on after the "||"
+        if (result) {
             return result;
         }
-        //get the logic operator
-        const logical = sections[i + 1] as LogicalNode | undefined;
-        //if the result is truthy and the op is OR then we're done
-        if (!!result && logical?.value === "||") {
-            return result;
-        }
-        //if the result is falsey and the op is AND
-        if (!result && logical?.value === "&&") {
-            //find the next or
-            nextORIndex = sections.findIndex(
-                findNextORIndex.bind(
-                    null
-                    , i
-                )
-            );
-            //if there is an OR then continue
-            if (nextORIndex !== -1) {
-                i = nextORIndex - 1;
-                continue;
-            }
-            //otherwize we're done
-            else {
-                return lastResult;
-            }
-        }
-        //set the last result
-        lastResult = result;
+        i = i + 2;
     }
-    //we'll never reach this point because line 133
-}
-
-function findNextORIndex(curIndex: number, section: ExpressionNode, index: number) {
-    if (index <= curIndex) {
-        return false;
-    }
-    const logical = section as LogicalNode;
-    if (logical.value === "||") {
-        return true;
-    }
-    return false;
+    return result;
 }
 
 function handleTernary(treeNode: TernaryNode, context: Object, options: ExecuteOptions) {

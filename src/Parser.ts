@@ -45,6 +45,26 @@ const GROUP_PAIRS: Record<string, string> = {
     , "(": ")"
 };
 /**
+* A regular expression pattern to match the "=>" that follows the parentheses of a bind expression
+* @property
+*/
+const BIND_ARROW_PATT = /^\s*=>/;
+/**
+* A regular expression pattern to match a parenthesised group placeholder
+* @property
+*/
+const GROUP_PLACEHOLDER_PATT = /^<g([0-9]+)>$/;
+/**
+* A regular expression pattern to match a regular expression literal at the current position
+* @property
+*/
+const REGEXP_LITERAL_PATT = /\/(?:[^\/\\\n]|\\.)+\/[gimyusd]*/y;
+/**
+* A regular expression pattern to match the character before a "(" that makes it the argument list of a call
+* @property
+*/
+const CALL_PAREN_PATT = /[A-Za-z0-9_$\]]/;
+/**
 * A regular expression pattern to match array patterns in expressions
 * @property
 */
@@ -73,7 +93,7 @@ const NOT_PATT = /^([!]{1,2})(.+)$/;
 * A regular expression pattern to match conditional expressions
 * @property
 */
-const COND_PATT = /^([\-A-Za-z0-9$.,()\[\]_\ '"`<>]+) (is|!is|isin|!isin|==|>|<|!=|>=|<=|!==|===) ([A-z0-9$.,()\[\]_\\ \/\-'"`<>]+|(?<!\/)\/.+(?<!\/)\/[gimyusd]+|"<[0-9]>"|\[(?:[,]?"<[0-9]>")+\])$/i;
+const COND_PATT = /^([!\-A-Za-z0-9$.,()\[\]_\ '"`<>]+) (is|!is|isin|!isin|==|>|<|!=|>=|<=|!==|===) ([A-z0-9$.,()\[\]_\\ \/\-'"`<>]+|(?<!\/)\/.+(?<!\/)\/[gimyusd]+|"<[0-9]>"|\[(?:[,]?"<[0-9]>")+\])$/i;
 /**
 * A regular expression pattern to match iterator expressions
 * @property
@@ -187,6 +207,45 @@ function removeStrings(strings: string[], ...values: string[]) {
     return `"<${index}>"`;
 }
 
+/**
+ * Replaces each parenthesised group with a "<gN>" placeholder, so the operators inside it are never split at the
+ * wrong level. The group text is kept in strings, after the string literals, and is parsed as a whole expression
+ * where its placeholder is used. The argument list of a call and the arguments of a bind are not groups.
+ * @param strings
+ * @param expressionStr
+ */
+function hideGroups(strings: string[], expressionStr: string) {
+    let result = "";
+    let i = 0;
+    while (i < expressionStr.length) {
+        const char = expressionStr[i];
+        //a regular expression literal may hold parentheses; division is written with spaces around the "/"
+        if (char === "/" && !(/\s/.test(expressionStr[i - 1] ?? "") && /\s/.test(expressionStr[i + 1] ?? ""))) {
+            REGEXP_LITERAL_PATT.lastIndex = i;
+            const literal = REGEXP_LITERAL_PATT.exec(expressionStr);
+            if (literal) {
+                result += literal[0];
+                i += literal[0].length;
+                continue;
+            }
+        }
+        if (char === "(" && !CALL_PAREN_PATT.test(expressionStr[i - 1] ?? "")) {
+            const end = findGroupEnd(expressionStr, i);
+            if (end !== -1 && !BIND_ARROW_PATT.test(expressionStr.substring(end + 1))) {
+                strings.push(
+                    expressionStr.substring(i + 1, end)
+                );
+                result += `<g${strings.length - 1}>`;
+                i = end + 1;
+                continue;
+            }
+        }
+        result += char;
+        i++;
+    }
+    return result;
+}
+
 function parse(
         variables: string[],
         strings: string[],
@@ -196,7 +255,10 @@ function parse(
         node: parseNode(
             variables,
             strings,
-            strippedExpressionStr
+            hideGroups(
+                strings,
+                strippedExpressionStr
+            )
         ),
         variables
     };
@@ -257,8 +319,8 @@ function splitLogical(variables: string[], strings: string[], expressionStr: str
         type: "chain",
         sections: []
     };
-    let match: RegExpExecArray | null;
-    while ((match = SPLIT_AND_OR_PATT.exec(expressionStr)) !== null) {
+    //the matches are taken first: a parenthesised group is parsed in the loop and splits its own chain
+    for (const match of expressionStr.matchAll(SPLIT_AND_OR_PATT)) {
         const node = parseExpression(
             variables,
             strings,
@@ -338,8 +400,8 @@ function parseExpression(variables: string[], strings: string[], expressionStr: 
             , match[3]
         );
     }
-    //maybe a not pattern
-    else if (!!(match = expressionStr.match(NOT_PATT))) {
+    //maybe a not pattern; "!" binds tighter than any operator, so it only owns an operand
+    else if (!!(match = expressionStr.match(NOT_PATT)) && !hasTopLevelOperator(match[2])) {
         return parseNot(
             variables
             , strings
@@ -355,6 +417,32 @@ function parseExpression(variables: string[], strings: string[], expressionStr: 
             , expressionStr
         );
     }
+}
+
+/**
+ * True when the expression has an arithmetic operator outside any group, so a leading "!" is not the whole of it.
+ * A literal and a regexp match are operands, even though they may hold "-" or "/"
+ * @param expressionStr
+ */
+function hasTopLevelOperator(expressionStr: string) {
+    const trimmed = expressionStr.trim();
+    if (LITERAL_PATT.test(trimmed) || MATCH_PATT.test(trimmed)) {
+        return false;
+    }
+    let depth = 0;
+    for (let i = 0; i < trimmed.length; i++) {
+        const char = trimmed[i];
+        if (GROUP_PAIRS[char]) {
+            depth++;
+        }
+        else if (char === "}" || char === "]" || char === ")") {
+            depth--;
+        }
+        else if (depth === 0 && OPERATOR_PATT.exec(trimmed.substring(i))?.index === 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function parseConditional(variables: string[], strings: string[], match: RegExpMatchArray) {
@@ -436,6 +524,14 @@ function parseValueExpression(variables: string[], strings: string[], expression
     let match: RegExpMatchArray | null;
     //remove any leading or trailing whitespace
     expressionStr = expressionStr.trim();
+    //a parenthesised group is parsed as a whole expression
+    if (!!(match = expressionStr.match(GROUP_PLACEHOLDER_PATT))) {
+        return parse(
+            variables
+            , strings
+            , strings[parseInt(match[1])]
+        ).node;
+    }
     //see if this is a literal
     if (LITERAL_PATT.test(expressionStr)) {
         expressionStr = expressionStr.replace(
