@@ -90,11 +90,6 @@ const MATCH_PATT = /^([\-A-Za-z0-9$.,()\[\]_\ '"`]+)(?:(?<!\/)\/(.+)(?<!\/)\/([g
 */
 const NOT_PATT = /^([!]{1,2})(.+)$/;
 /**
-* A regular expression pattern to match conditional expressions
-* @property
-*/
-const COND_PATT = /^([!\-A-Za-z0-9$.,()\[\]_\ '"`<>]+) (is|!is|isin|!isin|==|>|<|!=|>=|<=|!==|===) ([A-z0-9$.,()\[\]_\\ \/\-'"`<>]+|(?<!\/)\/.+(?<!\/)\/[gimyusd]+|"<[0-9]>"|\[(?:[,]?"<[0-9]>")+\])$/i;
-/**
 * A regular expression pattern to match iterator expressions
 * @property
 */
@@ -155,25 +150,44 @@ const ARRAY_OBJ_PATT = /((?:\[(.*)\])|(?:\{.*\}))/g;
 */
 const INDXR_PATT = /\[(.+?)\]/g;
 /**
-* A regular expression pattern to find operators
-* @property
-*/
-const OPERATOR_PATT = /(?<![\\])(?:[+\-*/%&|~^]|[*]{2}|[>]{2}|[<]{2}|[>]{3})(?![ ]*[=])/;
-/**
-* A list of operators in reverse order of precendence
+* The arithmetic operator levels, lowest precedence first. Operators of one level associate left to right, so the
+* expression is split at the rightmost one, except "**", which associates right to left as in JavaScript
 * @field
 */
-const operatorPrecedence: Record<string, RegExp> = {
-    ">>>": /(?<![\\])[>]{3}/
-    , ">>": /(?<![\\])[>]{2}(?![>])/
-    , "<<": /(?<![\\])[<]{2}/
-    , "-": /(?<![\\])[-]/
-    , "+": /(?<![\\])[+]/
-    , "%": /(?<![\\])[%]/
-    , "/": /(?<![\\])[\/]/
-    , "*": /(?<![\\*])[*](?![*])/
-    , "**": /(?<![\\])[*]{2}/
-};
+const OPERATOR_LEVELS: { operators: string[], rightToLeft?: boolean }[] = [
+    { operators: [">>>", ">>", "<<"] }
+    , { operators: ["+", "-"] }
+    , { operators: ["*", "/", "%"] }
+    , { operators: ["**"], rightToLeft: true }
+];
+/**
+* The arithmetic operators, longest first so "**" is never read as "*"
+* @field
+*/
+const OPERATORS = OPERATOR_LEVELS
+    .flatMap((level) => level.operators)
+    .sort((a, b) => b.length - a.length);
+/**
+* The comparison operator levels, lowest precedence first: equality, then relational and type checks.
+* A comparison operator has whitespace on both sides
+* @field
+*/
+const COMPARISON_LEVELS: string[][] = [
+    ["===", "!==", "==", "!="]
+    , [">=", "<=", ">", "<", "!isin", "isin", "!is", "is"]
+];
+/**
+* The comparison operators, longest first so "===" is never read as "=="
+* @field
+*/
+const COMPARISONS = COMPARISON_LEVELS
+    .flat()
+    .sort((a, b) => b.length - a.length);
+/**
+* A regular expression pattern to match a string literal or group placeholder at the current position
+* @property
+*/
+const PLACEHOLDER_AT_PATT = /"<[0-9]+>"|<g[0-9]+>/y;
 
 const ERROR_INVALID_EXPRESSION = "[Invalid Expression] The expression does not fit any expression patterns.";
 const ERROR_INVALID_OPERATOR = "[Invalid Operator] Unable to locate the operator";
@@ -382,12 +396,14 @@ function parseExpression(variables: string[], strings: string[], expressionStr: 
             , match
         );
     }
-    //maybe a conditional statement
-    else if (!!(match = expressionStr.match(COND_PATT))) {
+    //maybe a comparison; arithmetic binds tighter, so its operands may hold operators
+    else if (!!(match = findComparison(expressionStr))) {
         return parseConditional(
             variables
             , strings
-            , match
+            , expressionStr.substring(0, match.index).trim()
+            , match.operator
+            , expressionStr.substring(match.index + match.operator.length).trim()
         );
     }
     //perhaps a regexp match
@@ -429,35 +445,22 @@ function hasTopLevelOperator(expressionStr: string) {
     if (LITERAL_PATT.test(trimmed) || MATCH_PATT.test(trimmed)) {
         return false;
     }
-    let depth = 0;
-    for (let i = 0; i < trimmed.length; i++) {
-        const char = trimmed[i];
-        if (GROUP_PAIRS[char]) {
-            depth++;
-        }
-        else if (char === "}" || char === "]" || char === ")") {
-            depth--;
-        }
-        else if (depth === 0 && OPERATOR_PATT.exec(trimmed.substring(i))?.index === 0) {
-            return true;
-        }
-    }
-    return false;
+    return findOperator(trimmed) !== null;
 }
 
-function parseConditional(variables: string[], strings: string[], match: RegExpMatchArray) {
+function parseConditional(variables: string[], strings: string[], sideA: string, operator: string, sideB: string) {
     let typeMatch;
     const treeNode: ConditionalNode = {
         type: "conditional",
         sideA: parseExpression(
             variables,
             strings,
-            match[1]
+            sideA
         ),
-        operator: match[2]
+        operator
     };
 
-    if ((typeMatch = match[3].match(TYPE_PATT))) {
+    if ((typeMatch = sideB.match(TYPE_PATT))) {
         treeNode.sideB = {
             type: "type",
             value: typeMatch[1]
@@ -467,7 +470,7 @@ function parseConditional(variables: string[], strings: string[], match: RegExpM
         treeNode.sideB = parseExpression(
             variables,
             strings,
-            match[3]
+            sideB
         );
     }
 
@@ -591,7 +594,7 @@ function parseValueExpression(variables: string[], strings: string[], expression
             );
         }
         //see if this has any operators in it
-        else if (expressionStr.match(OPERATOR_PATT)) {
+        else if (findOperator(expressionStr)) {
             return parseOperator(
                 variables
                 , strings
@@ -970,26 +973,119 @@ function parseConcat(variables: string[], strings: string[], expressionStr: stri
     return treeNode;
 }
 
+/**
+ * Finds the binary arithmetic operator to split the expression at: one of the lowest precedence level outside any
+ * group, the rightmost for a left-to-right level, so "a - b + c" is "(a - b) + c". A "+" or "-" where an operand is
+ * expected is a sign, not an operator
+ * @param expressionStr
+ */
+function findOperator(expressionStr: string) {
+    const found: { index: number, operator: string }[] = [];
+    let depth = 0;
+    let expectOperand = true;
+    let i = 0;
+    while (i < expressionStr.length) {
+        const char = expressionStr[i];
+        PLACEHOLDER_AT_PATT.lastIndex = i;
+        const placeholder = PLACEHOLDER_AT_PATT.exec(expressionStr);
+        const operator = depth === 0
+            ? OPERATORS.find((op) => expressionStr.startsWith(op, i))
+            : undefined;
+        if (placeholder) {
+            expectOperand = false;
+            i += placeholder[0].length;
+            continue;
+        }
+        if (GROUP_PAIRS[char]) {
+            depth++;
+        }
+        else if (char === "}" || char === "]" || char === ")") {
+            depth--;
+        }
+        else if (operator) {
+            if (!expectOperand) {
+                found.push({ index: i, operator });
+                expectOperand = true;
+            }
+            i += operator.length;
+            continue;
+        }
+        if (!/\s/.test(char)) {
+            expectOperand = false;
+        }
+        i++;
+    }
+    for (const level of OPERATOR_LEVELS) {
+        const candidates = found.filter((entry) => level.operators.includes(entry.operator));
+        if (candidates.length !== 0) {
+            return level.rightToLeft
+                ? candidates[0]
+                : candidates[candidates.length - 1];
+        }
+    }
+    return null;
+}
+
+/**
+ * Finds the comparison operator to split the expression at: one of the lowest precedence level outside any group or
+ * regular expression literal, the rightmost, so "a == b == c" is "(a == b) == c"
+ * @param expressionStr
+ */
+function findComparison(expressionStr: string) {
+    const found: { index: number, operator: string }[] = [];
+    let depth = 0;
+    let i = 0;
+    while (i < expressionStr.length) {
+        const char = expressionStr[i];
+        //a regular expression literal is an operand; division is written with spaces around the "/"
+        if (char === "/" && !(/\s/.test(expressionStr[i - 1] ?? "") && /\s/.test(expressionStr[i + 1] ?? ""))) {
+            REGEXP_LITERAL_PATT.lastIndex = i;
+            const literal = REGEXP_LITERAL_PATT.exec(expressionStr);
+            if (literal) {
+                i += literal[0].length;
+                continue;
+            }
+        }
+        if (GROUP_PAIRS[char]) {
+            depth++;
+        }
+        else if (char === "}" || char === "]" || char === ")") {
+            depth--;
+        }
+        else if (depth === 0 && /\s/.test(expressionStr[i - 1] ?? "")) {
+            const operator = COMPARISONS.find(
+                (op) => expressionStr.substring(i, i + op.length).toLowerCase() === op
+                    && /\s/.test(expressionStr[i + op.length] ?? "")
+            );
+            if (operator) {
+                found.push({ index: i, operator: expressionStr.substring(i, i + operator.length) });
+                i += operator.length;
+                continue;
+            }
+        }
+        i++;
+    }
+    for (const level of COMPARISON_LEVELS) {
+        const candidates = found.filter((entry) => level.includes(entry.operator.toLowerCase()));
+        if (candidates.length !== 0) {
+            return candidates[candidates.length - 1];
+        }
+    }
+    return null;
+}
+
 function parseOperator(variables: string[], strings: string[], expressionStr: string) {
-    //find the operator with the highest precendent
-    const operator =
-        Object.keys(operatorPrecedence)
-            .find(
-                function findOperator(op) {
-                    var regExp = operatorPrecedence[op];
-                    return expressionStr.match(regExp);
-                }
-        );
-    if (!operator)
+    const found = findOperator(expressionStr);
+    if (!found)
         throw new Error(`${ERROR_INVALID_OPERATOR}`);
 
-    const opIndex = expressionStr.lastIndexOf(operator);
+    const { index: opIndex, operator } = found;
 
     //create the tree node
     const treeNode: OperatorNode = {
         type: "operator",
         operator,
-        //split the expression by the highest order operator
+        //split the expression at the operator that is evaluated last
         expressions: [
                 expressionStr
                     .substring(0, opIndex)

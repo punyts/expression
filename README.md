@@ -204,11 +204,18 @@ From the tightest binding to the loosest:
 
 1. Parenthesised groups, function calls, literals and variable paths
 2. `!` and `!!`, which negate only the operand after them, as in JavaScript: `!$.n > 2` is `(!$.n) > 2`. Write `!($.n > 2)` to negate a comparison.
-3. Arithmetic operators (`**`, `*`, `/`, `%`, `+`, `-`, `<<`, `>>`, `>>>`) and `+++` (concat)
-4. Comparisons (`==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=`, `is`, `!is`, `isin`, `!isin`)
-5. `&&`
-6. `||`
-7. Ternary `? :` (right-associative; the test and both branches may hold `&&` and `||` chains)
+3. `**` (right-associative: `2 ** 3 ** 2` is `2 ** (3 ** 2)`, `512`)
+4. `*`, `/`, `%`
+5. `+`, `-` (a `+` or `-` where an operand is expected is a sign: `$.a * -1`, `$.a - -1`)
+6. `<<`, `>>`, `>>>`
+7. Relational comparisons and type checks (`>`, `>=`, `<`, `<=`, `is`, `!is`, `isin`, `!isin`)
+8. Equality (`==`, `===`, `!=`, `!==`)
+9. `+++` (concat), whose operands may hold comparisons and arithmetic
+10. `&&`
+11. `||`
+12. Ternary `? :` (right-associative; the test and both branches may hold `&&` and `||` chains)
+
+Operators of equal precedence associate left to right, as in JavaScript, except `**` and the ternary: `$.a / $.b * 100` is `($.a / $.b) * 100`, `$.a - $.b + 1` is `($.a - $.b) + 1`, `$.a < $.b == true` is `($.a < $.b) == true`, and `&&`/`||` chains are evaluated from the left. Arithmetic binds tighter than a comparison, so `$.a + 1 > $.b` compares the sum. A comparison operator is written with whitespace on both sides.
 
 `&&` and `||` return the value of the last operand they evaluated, as JavaScript does: `0 && 10` is `0`, `$.b || $.d && $.c` with b=0, d=null is `null`, and `'a' || 'b'` is `'a'`.
 
@@ -233,3 +240,15 @@ These results are pinned by `src/Grammar.test.ts`:
 | `$.a ? 'p' : $.b ? 'q' : 'r'` | a=0, b=1 | `'q'` (nests in the alternate) |
 | `$.a || $.b ? 'yes' : 'no'` | a=0, b=1 | `'yes'` |
 | `($.a || $.b) && $.d` | a=1, b=0, d=0 | `0` (the group is evaluated first) |
+
+Associativity is pinned by `src/Associativity.test.ts`:
+
+| Expression | Context | Result |
+| -- | -- | -- |
+| `$.a / $.b * 100` | a=50, b=200 | `25` |
+| `$.a - $.b + 1` | a=50, b=200 | `-149` |
+| `$.b % 7 * 2` | b=200 | `8` |
+| `100 / 10 / 5 * 2` | | `4` |
+| `2 ** 3 ** 2` | | `512` |
+| `$.a == $.b == false` | a=50, b=200 | `true` |
+| `$.a + 1 > $.b` | a=50, b=200 | `false` |
