@@ -1070,3 +1070,82 @@ describe("Iterator locals and $-named context keys (AMM-1583)", () => {
         expect(rows.map((row) => row.$v)).toEqual(['d', 'c', 'b', 'a']);
     });
 });
+
+describe("Nested function calls", () => {
+    const context = {
+        max: (items: Record<string, { n: number }>, field: string) => Math.max(...Object.values(items).map((item) => item[field as "n"])),
+        coalesce: (...args: unknown[]) => args.find((arg) => arg !== null && arg !== undefined) ?? null,
+        trim: (value: string) => value.trim(),
+        empty: (value: string) => value === "",
+        add: (a: number, b: number) => a + b,
+        list: (...args: unknown[]) => args,
+        items: { a: { n: 2 }, b: { n: 7 } },
+        names: { h1: { name: "  " } }
+    };
+
+    it("should call a function whose argument is a call", () => {
+        // Arrange
+        const expression = Expression("coalesce(max($.items, 'n'), 0)");
+
+        // Act
+        const result = expression.execute(context);
+
+        // Assert
+        expect(result).toBe(7);
+    });
+
+    it("should call three levels of nested functions", () => {
+        // Arrange
+        const expression = Expression("empty(trim($.names.h1.name))");
+
+        // Act
+        const result = expression.execute(context);
+
+        // Assert
+        expect(result).toBe(true);
+    });
+
+    it("should keep commas inside nested calls, arrays and objects with their argument", () => {
+        // Arrange
+        const expression = Expression("list(add(1, 2), [3, 4], {a: 5, b: 6}, 'x, y')");
+
+        // Act
+        const result = expression.execute(context);
+
+        // Assert
+        expect(result).toEqual([3, [3, 4], { a: 5, b: 6 }, "x, y"]);
+    });
+
+    it("should take an operator expression as an argument of a nested call", () => {
+        // Arrange
+        const expression = Expression("add(add($.items.a.n * 2, 1), (3 - 1))");
+
+        // Act
+        const result = expression.execute(context);
+
+        // Assert
+        expect(result).toBe(7);
+    });
+
+    it("should not read two calls joined by an operator as one call", () => {
+        // Arrange
+        const expression = Expression("add(1, 2) + add(3, 4)");
+
+        // Act
+        const result = expression.execute(context);
+
+        // Assert
+        expect(result).toBe(10);
+    });
+
+    it("should call a function with no arguments", () => {
+        // Arrange
+        const expression = Expression("list()");
+
+        // Act
+        const result = expression.execute(context);
+
+        // Assert
+        expect(result).toEqual([]);
+    });
+});

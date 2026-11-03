@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.5.1
+- **Nested calls.** A function argument may itself be a call: `coalesce(max($.items, 'n'), 0)` and `empty(trim($.name))` parse. Arguments are split on commas outside any group, so commas inside nested calls, arrays and objects stay with their argument. These threw "does not fit any expression patterns" before.
+
 ## 1.5.0
 - **Left-to-right associativity.** Binary operators of equal precedence associate left to right, as in JavaScript: `$.a / $.b * 100` is `($.a / $.b) * 100` (was `$.a / ($.b * 100)`) and `$.a - $.b + 1` is `($.a - $.b) + 1` (was `$.a - ($.b + 1)`). `*`, `/` and `%` share a level, as do `+` and `-` and the shifts; `**` is right-associative. Breaking for expressions that relied on the old right-to-left grouping.
 - **Comparisons follow JavaScript precedence.** Arithmetic binds tighter than a comparison (`$.a + 1 > $.b` compares the sum; it used to evaluate to the sum), relational comparisons bind tighter than equality, and comparison chains such as `$.a == $.b == false` parse and associate left to right.

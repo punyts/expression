@@ -110,20 +110,15 @@ const STRING_PATT = /(?<![\\])[']((?:[^']|[\\'])*?)(?<![\\])[']|(?<![\\])[`]((?:
 */
 const STRING_PLACEHOLDER_PATT = /(?<![<\\])[<]([0-9]+)(?<![<\\])[>]/g;
 /**
-* A regular expression pattern to match string literal placeholders
-* @property
-*/
-const OBJ_ARRAY_PLACEHOLDER_PATT = /(?<![<\\])[<]{2}([0-9]+)(?<![<\\])[>]{2}/;
-/**
 * A regular expression pattern to split the concat expression
 * @property
 */
 const CONCAT_PATT = /[+]{3}/g;
 /**
-* A regular expression pattern to match function patterns in expressions.
+* A regular expression pattern to match the function path and the opening parenthesis of a call
 * @property
 */
-const FUNC_PATT = /^([A-Za-z0-9$.,()'"`\[\]_\<\>]+) ?\(([^)]+)?\)$/;
+const CALL_START_PATT = /^([A-Za-z0-9$.'"`\[\]_\<\>]+) ?\(/;
 /**
 * A regular expression pattern to match logical 'OR' or "AND" expressions
 * @property
@@ -139,11 +134,6 @@ const SPLIT_AND_OR_PATT = /(.+?) ?(\&{2} ?|\|{2} ?|$)/g;
 * @property
 */
 const VAR_PATT = /^[A-z0-9._$\[\]"'`\<\>]+$/;
-/**
-* A regular expression pattern to replace array or oject patterns
-* @property
-*/
-const ARRAY_OBJ_PATT = /((?:\[(.*)\])|(?:\{.*\}))/g;
 /**
 * A regular expression pattern to replace indexer patterns
 * @property
@@ -554,7 +544,7 @@ function parseValueExpression(variables: string[], strings: string[], expression
     //not a literal, should be a data value
     else {
         //see if this is a function
-        if (!!(match = expressionStr.match(FUNC_PATT))) {
+        if (!!(match = matchCall(expressionStr))) {
             return parsefunc(
                 variables
                 , strings
@@ -629,6 +619,24 @@ function parseValueExpression(variables: string[], strings: string[], expression
     }
 }
 
+/**
+ * Matches a call whose argument list closes at the end of the expression, so an argument may itself be a call:
+ * "coalesce(max($.a, 'b'), 0)". Returns the call, the function path and the argument text, like a match
+ * @param expressionStr
+ */
+function matchCall(expressionStr: string): RegExpMatchArray | null {
+    const start = expressionStr.match(CALL_START_PATT);
+    if (!start) {
+        return null;
+    }
+    const open = start[0].length - 1;
+    if (findGroupEnd(expressionStr, open) !== expressionStr.length - 1) {
+        return null;
+    }
+    const args = expressionStr.substring(open + 1, expressionStr.length - 1);
+    return [expressionStr, start[1], args.trim() === "" ? undefined : args] as unknown as RegExpMatchArray;
+}
+
 function parsefunc(variables: string[], strings: string[], match: RegExpMatchArray) {
     var treeNode: FuncNode = {
         type: "execution",
@@ -695,32 +703,9 @@ function extractArguments(expression: string) {
     if (!expression) {
         return [];
     }
-    //split out anything with commas in it
-    const parts: Record<string, any> = {};
-    let cnt = 0;
-    const exprNoObjNoArray = expression.replace(
-        ARRAY_OBJ_PATT
-        , function replaceArray(match, obj) {
-            var name = `<<${++cnt}>>`;
-            parts[name] = obj;
-            return name;
-        }
-    );
-    const args = exprNoObjNoArray.split(",");
-    //loop through the args and update any replaced parts
-    return args
-        .map(
-            function mapArgs(arg) {
-                arg = arg.trim();
-                arg = arg.replace(
-                    OBJ_ARRAY_PLACEHOLDER_PATT
-                    , function replacePlacholder(match) {
-                        return parts[match];
-                    }
-                );
-                return arg;
-            }
-        );
+    //split on the commas outside any group, so nested calls, arrays and objects stay whole
+    return splitTopLevel(expression, ",")
+        .map((arg) => arg.trim());
 }
 
 function parseArray(variables: string[], strings: string[], value: string) {

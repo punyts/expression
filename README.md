@@ -97,11 +97,12 @@ const boolThis = "!!$.my.var";
 
 ### Function
 
-A function expression calls a function addressed by a path on the context object. The arguments are also expressions which will be resolved before the function is called.
+A function expression calls a function addressed by a path on the context object. The arguments are also expressions which will be resolved before the function is called, and an argument may itself be a call.
 
 ```
 const funcExpr1 = "$.my.func()"
 const funcExpr2 = "$.my.func('literal', $.my.var)"
+const funcExpr3 = "$.my.func($.my.other($.my.var), 0)"
 ```
 
 ### Bind
