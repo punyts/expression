@@ -14,7 +14,6 @@ import {
     RegExpMatchNode, 
     RegExpNode, 
     NotNode, 
-    ConcatNode, 
     OperatorNode,
     LogicalNode,
     TernaryNode
@@ -110,10 +109,11 @@ const STRING_PATT = /(?<![\\])[']((?:[^']|[\\'])*?)(?<![\\])[']|(?<![\\])[`]((?:
 */
 const STRING_PLACEHOLDER_PATT = /(?<![<\\])[<]([0-9]+)(?<![<\\])[>]/g;
 /**
-* A regular expression pattern to split the concat expression
+* A regular expression pattern to find the removed "+++" concat operator, so it fails with a clear message
 * @property
 */
-const CONCAT_PATT = /[+]{3}/g;
+const CONCAT_PATT = /[+]{3}/;
+const ERROR_CONCAT_REMOVED = '"+++" was removed: use "+", which concatenates when either operand is a string';
 /**
 * A regular expression pattern to match the function path and the opening parenthesis of a call
 * @property
@@ -370,13 +370,9 @@ function parseExpression(variables: string[], strings: string[], expressionStr: 
             , expressionStr
         );
     }
-    //see if this has a concatination operation
-    else if (expressionStr.match(CONCAT_PATT)) {
-        return parseConcat(
-            variables
-            , strings
-            , expressionStr
-        );
+    //the removed concat operator; without this "a +++ b" would parse as "a + (+(+b))"
+    else if (CONCAT_PATT.test(expressionStr)) {
+        throw new Error(ERROR_CONCAT_REMOVED);
     }
     //see if this is an iterator
     else if (!!(match = expressionStr.match(ITER_PATT))) {
@@ -936,23 +932,6 @@ function parseNot(variables: string[], strings: string[], not: string, expressio
             , strings
             , expressionStr
         )
-    };
-
-    return treeNode;
-}
-
-function parseConcat(variables: string[], strings: string[], expressionStr: string) {
-    var treeNode: ConcatNode = {
-        type: "concat",
-        expressions: expressionStr
-            .split(CONCAT_PATT)
-            .map(
-                parseExpression.bind(
-                    null
-                    , variables
-                    , strings
-                )
-            )
     };
 
     return treeNode;

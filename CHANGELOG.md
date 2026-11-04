@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- **`+++` removed; `+` concatenates.** `+` decides by its operands: arrays concatenate, a string on either side concatenates (with `null` or `undefined` as `""`), and numbers add. It has the precedence of addition, so `'x:' + $.n > 2` now compares (it used to be `'x:' +++ ($.n > 2)`): wrap a comparison in parentheses to concatenate its result. An expression that still uses `+++` throws a parse error that points to `+`. The `concat` node type and `ConcatNode` are gone. Breaking.
+
 ## 1.5.1
 - **Nested calls.** A function argument may itself be a call: `coalesce(max($.items, 'n'), 0)` and `empty(trim($.name))` parse. Arguments are split on commas outside any group, so commas inside nested calls, arrays and objects stay with their argument. These threw "does not fit any expression patterns" before.
 

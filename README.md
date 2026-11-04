@@ -77,14 +77,16 @@ const obj1 = "{a: 1, 'b c': $.path.to.my.var}";
 const obj2 = "{total: $.price * $.qty, tags: ['x', $.tag], meta: {ok: $.count > 0} }";
 ```
 
-### Concat
+### Concatenation
 
-A concat expression concatenates 2 or more expressions, generally variable or literal expressions, but it's not limited to those two types.
+`+` decides by its operands: when either is an array it concatenates arrays, when either is a string it concatenates strings (a missing value, `null` or `undefined`, counts as `""`), and otherwise it adds. It associates left to right, so `$.a + $.b + ' items'` adds first and `'items: ' + $.a + $.b` concatenates both. `*` binds tighter, so `'total: ' + $.price * $.qty` is the label and the product.
 
 ```
-const concat1 = "$.path.to.my.var +++ ' ' +++ $.path.to.another.var";
-const concat2 = "'This is my ' +++ $.getThingName() +++ ', do you like it?'";
+const concat1 = "$.path.to.my.var + ' ' + $.path.to.another.var";
+const concat2 = "'This is my ' + $.getThingName() + ', do you like it?'";
 ```
+
+The old `+++` operator is gone; an expression that uses it throws `"+++" was removed: use "+"…`.
 
 ### Not
 
@@ -207,14 +209,13 @@ From the tightest binding to the loosest:
 2. `!` and `!!`, which negate only the operand after them, as in JavaScript: `!$.n > 2` is `(!$.n) > 2`. Write `!($.n > 2)` to negate a comparison.
 3. `**` (right-associative: `2 ** 3 ** 2` is `2 ** (3 ** 2)`, `512`)
 4. `*`, `/`, `%`
-5. `+`, `-` (a `+` or `-` where an operand is expected is a sign: `$.a * -1`, `$.a - -1`)
+5. `+` (add or concatenate), `-` (a `+` or `-` where an operand is expected is a sign: `$.a * -1`, `$.a - -1`)
 6. `<<`, `>>`, `>>>`
 7. Relational comparisons and type checks (`>`, `>=`, `<`, `<=`, `is`, `!is`, `isin`, `!isin`)
 8. Equality (`==`, `===`, `!=`, `!==`)
-9. `+++` (concat), whose operands may hold comparisons and arithmetic
-10. `&&`
-11. `||`
-12. Ternary `? :` (right-associative; the test and both branches may hold `&&` and `||` chains)
+9. `&&`
+10. `||`
+11. Ternary `? :` (right-associative; the test and both branches may hold `&&` and `||` chains)
 
 Operators of equal precedence associate left to right, as in JavaScript, except `**` and the ternary: `$.a / $.b * 100` is `($.a / $.b) * 100`, `$.a - $.b + 1` is `($.a - $.b) + 1`, `$.a < $.b == true` is `($.a < $.b) == true`, and `&&`/`||` chains are evaluated from the left. Arithmetic binds tighter than a comparison, so `$.a + 1 > $.b` compares the sum. A comparison operator is written with whitespace on both sides.
 

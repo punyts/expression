@@ -1,5 +1,5 @@
 
-export type ParsedNodeType = "array" | "bind" | "concat" | "conditional" | "execution" | "iterator" | "literal" | "logical" | "match" | "not" | "object" | "operator" | "regex" | "type" | "variable" | "chain" | "ternary";
+export type ParsedNodeType = "array" | "bind" | "conditional" | "execution" | "iterator" | "literal" | "logical" | "match" | "not" | "object" | "operator" | "regex" | "type" | "variable" | "chain" | "ternary";
 
 export interface ParsedNode {
     type: ParsedNodeType;
@@ -7,10 +7,6 @@ export interface ParsedNode {
 
 export interface OperatorNode extends ParsedNode {
     operator: string;
-    expressions: ExpressionNode[];
-}
-
-export interface ConcatNode extends ParsedNode {
     expressions: ExpressionNode[];
 }
 
@@ -95,7 +91,7 @@ export interface LogicalNode extends ParsedNode {
     value: any;
 }
 
-export type ExpressionNode = TernaryNode | ObjectNode | ChainNode | TypeNode | ConditionalNode | IteratorNode | FuncNode | ArrayNode | VariableNode | LiteralNode | RegExpMatchNode | RegExpNode | NotNode | ConcatNode | OperatorNode;
+export type ExpressionNode = TernaryNode | ObjectNode | ChainNode | TypeNode | ConditionalNode | IteratorNode | FuncNode | ArrayNode | VariableNode | LiteralNode | RegExpMatchNode | RegExpNode | NotNode | OperatorNode;
 
 export interface ExpressionTree {
     node: ExpressionNode;

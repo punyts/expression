@@ -64,7 +64,7 @@ describe("Ternary (condition ? a : b) expressions", () => {
 
     it('should combine with concatenation in a branch', () => {
         // Act / Assert
-        expect(run("$.a ? 'x' +++ $.b : 'none'", { a: 1, b: 'y' })).toBe('xy');
+        expect(run("$.a ? 'x' + $.b : 'none'", { a: 1, b: 'y' })).toBe('xy');
     });
 
     it('should only evaluate the branch that is taken', () => {

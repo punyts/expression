@@ -1,7 +1,6 @@
 import { 
     ArrayNode, 
     ChainNode, 
-    ConcatNode, 
     ConditionalNode, 
     ExecuteOptions, 
     ExpressionNode, 
@@ -119,12 +118,6 @@ function handleType(
         case "not":
             return handleNot(
                 treeNode as NotNode,
-                context,
-                options
-            );
-        case "concat":
-            return handleConcat(
-                treeNode as ConcatNode,
                 context,
                 options
             );
@@ -616,46 +609,6 @@ function handleNot(treeNode: NotNode, context: Object, options: ExecuteOptions) 
     return !exprResults;
 }
 
-function handleConcat(treeNode: ConcatNode, context: Object, options: ExecuteOptions) {
-    const results = treeNode
-        .expressions
-        .map(
-            function mapExpressionResult(expression) {
-                return handleType(
-                    expression,
-                    context,
-                    options
-                );
-            }
-        );
-    let concatedValue: any;
-        
-    //loop through the results, adding each to the value
-    results.forEach(
-        function concatEachResult(result) {
-            if (concatedValue === undefined) {
-                concatedValue = result;
-            }
-            else if (Array.isArray(concatedValue)) {
-                concatedValue = concatedValue.concat(
-                    result
-                );
-            }
-            else if (Array.isArray(result)) {
-                concatedValue = [concatedValue]
-                    .concat(
-                        result
-                    );
-            }
-            else {
-                concatedValue += result;
-            }
-        }
-    );
-
-    return concatedValue;
-}
-
 function handleOperator(
         treeNode: OperatorNode,
         context: Object,
@@ -694,6 +647,10 @@ function handleOperator(
             }
             else if (Array.isArray(resultB)) {
                 return [resultA].concat(resultB);
+            }
+            //a string on either side concatenates, with a missing value (null or undefined) as ""
+            else if (typeof resultA === "string" || typeof resultB === "string") {
+                return String(resultA ?? "") + String(resultB ?? "");
             }
             return resultA + resultB;
         case "<<":

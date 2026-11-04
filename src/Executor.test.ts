@@ -4,7 +4,6 @@ import Expression from "./index.js";
 import { 
     ArrayNode, 
     ChainNode, 
-    ConcatNode, 
     ConditionalNode, 
     ExpressionNode, 
     FuncNode, 
@@ -37,38 +36,43 @@ describe("Execute variable expression", () => {
     });
 });
 
-describe("Execute concat expression", () => {
-    const concatNode1: VariableNode = {
-        type: "variable",
-        path: "$.my.var"
-    };
-    const concatNode2: LiteralNode = {
-        type: "literal",
-        value: "my car"
-    };
-    const concatNode3: FuncNode = {
-        type: "execution",
-        path: "$.my.func",
-        arguments: []
-    };
-    const exprNode: ConcatNode = {
-        type: "concat",
-        expressions: [
-            concatNode1,
-            concatNode2,
-            concatNode3
-        ]
-    };
-    const context = {
-        my: {
-            var: "This is ",
-            func: ()=> ", isn't it cool!"
-        }
-    };
-    const result = Executor(exprNode, context);
+describe("Execute + on strings", () => {
+    it("should concatenate when either operand is a string", () => {
+        // Arrange
+        const context = Object.freeze({ my: Object.freeze({ var: "This is ", func: () => ", isn't it cool!" }) });
 
-    it("should return value", () => {
+        // Act
+        const result = Expression("$.my.var + 'my car' + $.my.func()").execute(context);
+
+        // Assert
         expect(result).toBe("This is my car, isn't it cool!");
+    });
+
+    it("should add numbers and then concatenate, left to right", () => {
+        expect(Expression("$.a + $.b + ' items'").execute({ a: 1, b: 2 })).toBe("3 items");
+        expect(Expression("'items: ' + $.a + $.b").execute({ a: 1, b: 2 })).toBe("items: 12");
+    });
+
+    it("should concatenate a number with a string", () => {
+        expect(Expression("'x:' + $.n").execute({ n: 3 })).toBe("x:3");
+        expect(Expression("$.n + 'px'").execute({ n: 3 })).toBe("3px");
+    });
+
+    it("should treat a missing value as an empty string next to a string", () => {
+        expect(Expression("'Hello ' + $.name").execute({})).toBe("Hello ");
+        expect(Expression("$.first + ' ' + $.last").execute({ first: "Ada", last: null })).toBe("Ada ");
+    });
+
+    it("should bind multiplication tighter than concatenation", () => {
+        expect(Expression("'total: ' + $.price * $.qty").execute({ price: 2, qty: 3 })).toBe("total: 6");
+    });
+
+    it("should still add numbers", () => {
+        expect(Expression("$.a + $.b").execute({ a: 1, b: 2 })).toBe(3);
+    });
+
+    it("should reject the removed +++ operator with a pointer to +", () => {
+        expect(() => Expression("$.a +++ $.b")).toThrow('"+++" was removed');
     });
 });
 
@@ -427,40 +431,9 @@ describe('Executor', () => {
         expect(Executor(notNode, mockContext, mockOptions)).toBe(false);
     });
 
-    it('should handle concat nodes with strings', () => {
-        const concatNode: ConcatNode = {
-            type: 'concat',
-            expressions: [
-                { type: 'literal', value: 'Hello' },
-                { type: 'literal', value: ' ' },
-                { type: 'literal', value: 'World' },
-            ],
-        };
-        expect(Executor(concatNode, mockContext, mockOptions)).toBe('Hello World');
-    });
-
-    it('should handle concat nodes with arrays', () => {
-        const concatNode: ConcatNode = {
-            type: 'concat',
-            expressions: [
-                { type: 'literal', value: [1, 2] },
-                { type: 'literal', value: [3] },
-                { type: 'literal', value: [5, 6] },
-            ],
-        };
-        expect(Executor(concatNode, mockContext, mockOptions)).toEqual([1, 2, 3, 5, 6]);
-    });
-
-    it('should handle concat nodes with mixed types', () => {
-        const concatNode: ConcatNode = {
-            type: 'concat',
-            expressions: [
-                { type: 'literal', value: "[1, 2]" },
-                { type: 'literal', value: [3] },
-                { type: 'literal', value: [5, 6] },
-            ],
-        };
-        expect(Executor(concatNode, mockContext, mockOptions)).toEqual(["[1, 2]", 3, 5, 6]);
+    it('should concatenate arrays with +', () => {
+        expect(Expression("$.a + $.b").execute({ a: [1, 2], b: [3] })).toEqual([1, 2, 3]);
+        expect(Expression("$.s + $.b").execute({ s: "[1, 2]", b: [3] })).toEqual(["[1, 2]", 3]);
     });
 
     it('should handle operator nodes +', () => {

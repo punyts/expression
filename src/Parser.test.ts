@@ -1,13 +1,13 @@
 import Parser from "./Parser.js";
 import { 
     ChainNode, 
-    ConcatNode, 
     ConditionalNode, 
     FuncNode, 
     IteratorNode,
      LiteralNode, 
      LogicalNode, 
      NotNode, 
+     OperatorNode, 
      RegExpMatchNode, 
      RegExpNode, 
      VariableNode 
@@ -165,25 +165,23 @@ describe("Parse not expression", () => {
     });
 });
 
-describe("Parse concat expression", () => {
-    const exprStr = "$.my.var[2] +++ $.global.text +++ ' ' +++ $.path.to.var[\"literal\"]";
-
-    const nodeTree = Parser(exprStr);
-    const variables = nodeTree.variables;
+describe("Parse string + expression", () => {
+    const nodeTree = Parser("$.my.var[2] + $.global.text + ' ' + $.path.to.var[\"literal\"]");
 
     it("should parse variables", () => {
-        expect(variables.length).toBe(3);
-        expect(variables[0]).toBe("$.my.var.2");
-        expect(variables[1]).toBe("$.global.text");
-        expect(variables[2]).toBe("$.path.to.var.literal");
+        expect(nodeTree.variables).toEqual(["$.my.var.2", "$.global.text", "$.path.to.var.literal"]);
     });
 
-    it("should parse as a concat", () => {
-        expect(nodeTree.node.type).toBe("concat");
-        expect((nodeTree.node as ConcatNode).expressions.length).toBe(4);
-        expect((nodeTree.node as ConcatNode).expressions[0].type).toBe("variable");
-        expect((nodeTree.node as ConcatNode).expressions[2].type).toBe("literal");
-        expect(((nodeTree.node as ConcatNode).expressions[2] as LiteralNode).value).toBe(" ");
+    it("should parse as left-associative + operators", () => {
+        const node = nodeTree.node as OperatorNode;
+        expect(node.type).toBe("operator");
+        expect(node.operator).toBe("+");
+        expect(node.expressions[1].type).toBe("variable");
+        expect((node.expressions[0] as OperatorNode).expressions[1]).toEqual({ type: "literal", value: " " });
+    });
+
+    it("should reject the removed +++ operator", () => {
+        expect(() => Parser("$.a +++ $.b")).toThrow('use "+"');
     });
 });
 
@@ -451,11 +449,12 @@ describe('Parser', () => {
     });
 
     describe('Complex Expressions', () => {
-        it('should parse concatenated expressions', () => {
-            const result = Parser('"Hello" +++ "World"');
+        it('should parse string + expressions as operators', () => {
+            const result = Parser('"Hello" + "World"');
             expect(result).toEqual({
                 node: {
-                    type: 'concat',
+                    type: 'operator',
+                    operator: '+',
                     expressions: [
                         { type: 'literal', value: 'Hello' },
                         { type: 'literal', value: 'World' },
