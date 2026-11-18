@@ -6,7 +6,7 @@ The system accepts a string expression, compiles it, and generates an `execute` 
 
 ## Expression Lifecycle
 
-1. Compile the string expression to get a `CompiledExpression`
+1. Compile the string expression with `Expression(str)` to get a `CompiledExpression`: `{ original, variables, execute(context, options?) }`. `original` is the string and `variables` the variable paths it reads.
 2. Execute the compiled expression with a context object
 3. Repeat step 2 when the context has changed 
 4. Dereference the compiled expression to dispose of it
@@ -14,7 +14,7 @@ The system accepts a string expression, compiles it, and generates an `execute` 
 ## Usage
 
 ```ts
-import Expression from "@comptia/innovation.corets/src/expression";
+import Expression from "@punyts/expression";
 
 //a string expression
 const exprStr = "$i in $.my.list";
@@ -30,15 +30,19 @@ const context = {
 };
 
 //execute the expression with a context
-const result = expr(context);
+const result = expr.execute(context);
+
+//a missing variable is undefined by default; { quiet: false } throws instead
+const strict = expr.execute(context, { quiet: false });
 ```
 
 ## Expression Types
 
 * Literal
 * Variable
+* Array
 * Object
-* Concat
+* Operator (arithmetic, shifts and concatenation)
 * Not
 * Function
 * Bind
@@ -68,6 +72,14 @@ A variable expression is a path that points to a property in the context object.
 const varExpr1 = "$.path.to.my.var";
 ```
 
+### Array
+
+An array expression builds a new array; each member is any expression.
+
+```
+const arr1 = "[1, $.my.var, 'x']";
+```
+
 ### Object
 
 An object expression builds a new object. Keys are written as identifiers, numbers or quoted strings, and each value is any expression: a literal, a variable path, an operator, a nested object or an array.
@@ -77,7 +89,9 @@ const obj1 = "{a: 1, 'b c': $.path.to.my.var}";
 const obj2 = "{total: $.price * $.qty, tags: ['x', $.tag], meta: {ok: $.count > 0} }";
 ```
 
-### Concatenation
+### Operator
+
+An operator expression applies `+`, `-`, `*`, `/`, `%`, `**`, `<<`, `>>` or `>>>` to two operands; their precedence is under [Precedence](#precedence).
 
 `+` decides by its operands: when either is an array it concatenates arrays, when either is a string it concatenates strings (a missing value, `null` or `undefined`, counts as `""`), and otherwise it adds. It associates left to right, so `$.a + $.b + ' items'` adds first and `'items: ' + $.a + $.b` concatenates both. `*` binds tighter, so `'total: ' + $.price * $.qty` is the label and the product.
 
