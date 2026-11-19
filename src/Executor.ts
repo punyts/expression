@@ -514,8 +514,17 @@ function handleVariable(treeNode: VariableNode, context: Object, options: Execut
     return value;
 }
 
+/** The value at a callee's path, or the function `options.callable` gives for it when that value is not a function */
+function calleeOf(treeNode: FuncNode, context: Object, options: ExecuteOptions) {
+    const value = lookupPath(treeNode.path, context);
+    if (typeof value === "function" || options.callable === undefined) {
+        return value;
+    }
+    return options.callable(value, treeNode.path) ?? value;
+}
+
 function handleExecution(treeNode: FuncNode, context: Object, options: ExecuteOptions) {
-    const fn: Function = lookupPath(treeNode.path, context);
+    const fn: Function = calleeOf(treeNode, context, options);
 
     const args = treeNode.arguments
         .map(function mapArg(arg) {
@@ -540,7 +549,7 @@ function handleExecution(treeNode: FuncNode, context: Object, options: ExecuteOp
 }
 
 function handleBind(treeNode: FuncNode, context: Object, options: ExecuteOptions) {
-    const fn = lookupPath(treeNode.path, context);
+    const fn = calleeOf(treeNode, context, options);
     const args = treeNode.arguments
             .map(
                 function mapArg(arg) {

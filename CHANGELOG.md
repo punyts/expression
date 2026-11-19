@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **`ExecuteOptions.callable`.** A call whose callee's value is not a function asks `callable(value, path)` for the function to call, such as the code behind a pointer `{ fn: <GUID> }` at `$.functions.host.<name>`; undefined fails the call as before, and a function value is called without asking. Tests: `Executor.test.ts`, "should call the function callable gives for a callee whose value is not a function", "should fail as before when callable gives no function, and not ask it for a function value".
 - **`+++` removed; `+` concatenates.** `+` decides by its operands: arrays concatenate, a string on either side concatenates (with `null` or `undefined` as `""`), and numbers add. It has the precedence of addition, so `'x:' + $.n > 2` now compares (it used to be `'x:' +++ ($.n > 2)`): wrap a comparison in parentheses to concatenate its result. An expression that still uses `+++` throws a parse error that points to `+`. The `concat` node type and `ConcatNode` are gone. Breaking.
 
 ## 1.5.1

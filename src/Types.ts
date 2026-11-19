@@ -100,6 +100,11 @@ export interface ExpressionTree {
 
 export interface ExecuteOptions {
     quiet: boolean;
+    /**
+     * Turns a callee's value into the function to call when that value is not a function, such as a pointer to code
+     * the host loads. It gets the value at the callee's path and the path as written; undefined means no function there
+     */
+    callable?: (value: unknown, path: string) => Function | undefined;
 }
 
 export interface CompiledExpression {

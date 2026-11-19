@@ -1122,3 +1122,37 @@ describe("Nested function calls", () => {
         expect(result).toEqual([]);
     });
 });
+
+describe("Execute with callable", () => {
+    it("should call the function callable gives for a callee whose value is not a function", () => {
+        // Arrange
+        const context = { functions: { text: { upper: { fn: "g1" } } }, name: "ann" };
+        const asked: [unknown, string][] = [];
+        const callable = (value: unknown, path: string) => {
+            asked.push([value, path]);
+            return (value as { fn?: string }).fn === "g1" ? (text: string) => text.toUpperCase() : undefined;
+        };
+
+        // Act
+        const result = Expression("$.functions.text.upper($.name)").execute(context, { quiet: true, callable });
+
+        // Assert
+        expect(result).toBe("ANN");
+        expect(asked).toEqual([[{ fn: "g1" }, "$.functions.text.upper"]]);
+    });
+
+    it("should fail as before when callable gives no function, and not ask it for a function value", () => {
+        // Arrange
+        const callable = vi.fn(() => undefined);
+        const context = { pointer: { fn: "g2" }, double: (n: number) => n * 2 };
+
+        // Act
+        const missing = () => Expression("$.pointer(1)").execute(context, { quiet: true, callable });
+        const plain = Expression("$.double(2)").execute(context, { quiet: true, callable });
+
+        // Assert
+        expect(missing).toThrow();
+        expect(plain).toBe(4);
+        expect(callable).toHaveBeenCalledTimes(1);
+    });
+});
